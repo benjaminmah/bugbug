@@ -12,6 +12,7 @@ from multiprocessing.pool import Pool
 
 import pandas as pd
 from dateutil import parser
+from langdetect import detect_langs
 from libmozdata import versions
 from libmozdata.bugzilla import Bugzilla
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -896,3 +897,17 @@ class BugTypes(SingleBugFeature):
             for is_type in self.bug_type_extractors
             if is_type(bug, bug_map)
         ]
+
+
+class LanguageSummary(SingleBugFeature):
+    """Determine the languages of the bug report based on the bug summary."""
+
+    name = "Languages of the bug summary"
+
+    def __call__(self, bug, **kwargs):
+        try:
+            languages = detect_langs(bug["summary"])
+            detected_languages = [lang.lang for lang in languages]
+            return detected_languages
+        except Exception:
+            return ["unknown"]

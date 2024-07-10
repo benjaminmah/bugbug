@@ -47,6 +47,7 @@ class SpamBugModel(BugModel):
             bug_features.Platform(),
             bug_features.OpSys(),
             bug_features.FiledVia(),
+            bug_features.LanguageSummary(),
         ]
 
         cleanup_functions = [
