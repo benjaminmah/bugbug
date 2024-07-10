@@ -900,7 +900,7 @@ class BugTypes(SingleBugFeature):
 
 
 class LanguageSummary(SingleBugFeature):
-    """Determine the languages of the bug report based on the bug summary."""
+    """Determine the languages of the bug summary."""
 
     name = "Languages of the bug summary"
 
@@ -911,3 +911,30 @@ class LanguageSummary(SingleBugFeature):
             return detected_languages
         except Exception:
             return ["unknown"]
+
+
+class LanguageDescription(SingleBugFeature):
+    """Determine the languages of the bug description."""
+
+    name = "Languages of the bug description"
+
+    def __call__(self, bug, **kwargs):
+        try:
+            languages = detect_langs(bug["comments"][0]["text"])
+            detected_languages = [lang.lang for lang in languages]
+            return detected_languages
+        except Exception:
+            return ["unknown"]
+
+
+# if __name__ == "__main__":
+#     lang = LanguageDescription()
+#     counter = 0
+#     for bug in bugzilla.get_bugs():
+#         if counter == 1999:
+#             print(f"Bug ID: {bug["id"]}")
+#             lang(bug)
+#         counter += 1
+
+#         if counter >= 2000:
+#             break
