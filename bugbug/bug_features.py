@@ -928,13 +928,123 @@ class LanguageDescription(SingleBugFeature):
 
 
 # if __name__ == "__main__":
-#     lang = LanguageDescription()
-#     counter = 0
-#     for bug in bugzilla.get_bugs():
-#         if counter == 1999:
-#             print(f"Bug ID: {bug["id"]}")
-#             lang(bug)
-#         counter += 1
+#     hasstr = HasSTR()
+#     hasregressionrange = HasRegressionRange()
+#     severity = Severity()
+#     hascrashsignature = HasCrashSignature()
+#     hasurl = HasURL()
+#     whiteboard = Whiteboard()
+#     product = Product()
+#     numwordstitle = NumWordsTitle()
+#     numwordscomments = NumWordsComments()
+#     keywords = Keywords()
+#     priority = Priority()
+#     version = Version()
+#     targetmilestone = TargetMilestone()
+#     hasattachment = HasAttachment()
+#     platform = Platform()
+#     opsys = OpSys()
+#     filedvia = FiledVia()
 
-#         if counter >= 2000:
-#             break
+
+#     bug_ids = [
+#         1704587,
+#         1730091,
+#         1755372,
+#         1777945,
+#         1789913,
+#         1790749,
+#         1801198,
+#         1851823,
+#         1751191,
+#         1826926,
+#         1891313,
+#         1839053,
+#         1903327,
+#         1893886,
+#         1805120,
+#         1829868,
+#         1837344,
+#         1905017,
+#         1906467
+#     ]
+
+
+#     for bug in bugzilla.get_bugs():
+#         if bug["id"] in bug_ids:
+#             print(f"Bug ID: {bug["id"]}")
+#             print(f"HasSTR: {hasstr(bug)}")
+#             print(f"HasRegressionRange: {hasregressionrange(bug)}")
+#             print(f"Severity: {severity(bug)}")
+#             print(f"HasCrashSignature: {hascrashsignature(bug)}")
+#             print(f"HasURL: {hasurl(bug)}")
+#             print(f"Whiteboard: {whiteboard(bug)}")
+#             print(f"Product: {product(bug)}")
+#             print(f"NumWordsTitle: {numwordstitle(bug)}")
+#             print(f"NumWordsComments: {numwordscomments(bug)}")
+#             print(f"Keywords: {keywords(bug)}")
+#             print(f"Priority: {priority(bug)}")
+#             print(f"Version: {version(bug)}")
+#             print(f"TargetMilestone: {targetmilestone(bug)}")
+#             print(f"HasAttachment: {hasattachment(bug)}")
+#             print(f"Platform: {platform(bug)}")
+#             print(f"OpSys: {opsys(bug)}")
+#             print(f"FiledVia: {filedvia(bug)}\n")
+# import requests
+
+# def get_bug_details(bug_id):
+#     include_fields = [
+#         'id', 'summary', 'status', 'resolution', 'creator', 'creation_time',
+#         'last_change_time', 'comments', 'attachments', 'filed_via', 'url', 'whiteboard', 'product', 'keywords', 'version', 'target_milestone', 'platform', 'op_sys'
+#     ]
+#     fields = ",".join(include_fields)
+#     bug_url = f"https://bugzilla.mozilla.org/rest/bug/{bug_id}?include_fields={fields}"
+#     comments_url = f"https://bugzilla.mozilla.org/rest/bug/{bug_id}/comment"
+#     attachments_url = f"https://bugzilla.mozilla.org/rest/bug/{bug_id}/attachment"
+
+#     # Get the bug details
+#     response = requests.get(bug_url)
+#     if response.status_code == 200:
+#         bug = response.json()['bugs'][0]
+#     else:
+#         response.raise_for_status()
+
+#     # Get the comments
+#     response = requests.get(comments_url)
+#     if response.status_code == 200:
+#         bug['comments'] = response.json()['bugs'][str(bug_id)]['comments']
+#     else:
+#         response.raise_for_status()
+
+#     # Get the attachments
+#     response = requests.get(attachments_url)
+#     if response.status_code == 200:
+#         attachments = response.json()['bugs'][str(bug_id)]
+#         if isinstance(attachments, dict):
+#             bug['attachments'] = attachments.get('attachments', [])
+#         else:
+#             bug['attachments'] = []
+#     else:
+#         response.raise_for_status()
+
+#     return bug
+
+# bug = get_bug_details(1906467)
+# print(f"Bug ID: {bug["id"]}")
+# print(f"HasSTR: {hasstr(bug)}")
+# print(f"HasRegressionRange: {hasregressionrange(bug)}")
+# print(f"Severity: {severity(bug)}")
+# print(f"HasCrashSignature: {hascrashsignature(bug)}")
+# print(f"HasURL: {hasurl(bug)}")
+# print(f"Whiteboard: {whiteboard(bug)}")
+# print(f"Product: {product(bug)}")
+# print(f"NumWordsTitle: {numwordstitle(bug)}")
+# print(f"NumWordsComments: {numwordscomments(bug)}")
+# print(f"Keywords: {keywords(bug)}")
+# print(f"Priority: {priority(bug)}")
+# print(f"Version: {version(bug)}")
+# print(f"TargetMilestone: {targetmilestone(bug)}")
+# print(f"HasAttachment: {hasattachment(bug)}")
+# print(f"Platform: {platform(bug)}")
+# print(f"OpSys: {opsys(bug)}")
+# print(f"FiledVia: {filedvia(bug)}\n")
