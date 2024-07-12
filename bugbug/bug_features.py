@@ -946,50 +946,52 @@ class LanguageDescription(SingleBugFeature):
 #     opsys = OpSys()
 #     filedvia = FiledVia()
 
+### Bugs that are in the bugzilla database ###
+# #     bug_ids = [
+#         # 1704587,
+#         # 1730091,
+#         # 1755372,
+#         # 1777945,
+#         # 1789913,
+#         # 1790749,
+#         # 1801198,
+#         # 1851823,
+#         # 1751191,
+#         # 1826926,
+#         # 1891313,
+#         # 1839053,
+#         # 1903327,
+#         # 1893886,
+#         # 1805120,
+#         # 1829868,
+#         # 1837344,
+#         # 1905017,
+#         # 1906467
+#     # ]
 
-#     bug_ids = [
-#         1704587,
-#         1730091,
-#         1755372,
-#         1777945,
-#         1789913,
-#         1790749,
-#         1801198,
-#         1851823,
-#         1751191,
-#         1826926,
-#         1891313,
-#         1839053,
-#         1903327,
-#         1893886,
-#         1805120,
-#         1829868,
-#         1837344,
-#         1905017,
-#         1906467
-#     ]
 
+#     # for bug in bugzilla.get_bugs():
+#     #     if bug["id"] in bug_ids:
+#     #         print(f"Bug ID: {bug["id"]}")
+#     #         print(f"HasSTR: {hasstr(bug)}")
+#     #         print(f"HasRegressionRange: {hasregressionrange(bug)}")
+#     #         print(f"Severity: {severity(bug)}")
+#     #         print(f"HasCrashSignature: {hascrashsignature(bug)}")
+#     #         print(f"HasURL: {hasurl(bug)}")
+#     #         print(f"Whiteboard: {whiteboard(bug)}")
+#     #         print(f"Product: {product(bug)}")
+#     #         print(f"NumWordsTitle: {numwordstitle(bug)}")
+#     #         print(f"NumWordsComments: {numwordscomments(bug)}")
+#     #         print(f"Keywords: {keywords(bug)}")
+#     #         print(f"Priority: {priority(bug)}")
+#     #         print(f"Version: {version(bug)}")
+#     #         print(f"TargetMilestone: {targetmilestone(bug)}")
+#     #         print(f"HasAttachment: {hasattachment(bug)}")
+#     #         print(f"Platform: {platform(bug)}")
+#     #         print(f"OpSys: {opsys(bug)}")
+#     #         print(f"FiledVia: {filedvia(bug)}\n")
 
-#     for bug in bugzilla.get_bugs():
-#         if bug["id"] in bug_ids:
-#             print(f"Bug ID: {bug["id"]}")
-#             print(f"HasSTR: {hasstr(bug)}")
-#             print(f"HasRegressionRange: {hasregressionrange(bug)}")
-#             print(f"Severity: {severity(bug)}")
-#             print(f"HasCrashSignature: {hascrashsignature(bug)}")
-#             print(f"HasURL: {hasurl(bug)}")
-#             print(f"Whiteboard: {whiteboard(bug)}")
-#             print(f"Product: {product(bug)}")
-#             print(f"NumWordsTitle: {numwordstitle(bug)}")
-#             print(f"NumWordsComments: {numwordscomments(bug)}")
-#             print(f"Keywords: {keywords(bug)}")
-#             print(f"Priority: {priority(bug)}")
-#             print(f"Version: {version(bug)}")
-#             print(f"TargetMilestone: {targetmilestone(bug)}")
-#             print(f"HasAttachment: {hasattachment(bug)}")
-#             print(f"Platform: {platform(bug)}")
-#             print(f"OpSys: {opsys(bug)}")
-#             print(f"FiledVia: {filedvia(bug)}\n")
+### Bugs that are not in the bugzilla database ###
 # import requests
 
 # def get_bug_details(bug_id):
@@ -1029,22 +1031,23 @@ class LanguageDescription(SingleBugFeature):
 
 #     return bug
 
-# bug = get_bug_details(1906467)
-# print(f"Bug ID: {bug["id"]}")
-# print(f"HasSTR: {hasstr(bug)}")
-# print(f"HasRegressionRange: {hasregressionrange(bug)}")
-# print(f"Severity: {severity(bug)}")
-# print(f"HasCrashSignature: {hascrashsignature(bug)}")
-# print(f"HasURL: {hasurl(bug)}")
-# print(f"Whiteboard: {whiteboard(bug)}")
-# print(f"Product: {product(bug)}")
-# print(f"NumWordsTitle: {numwordstitle(bug)}")
-# print(f"NumWordsComments: {numwordscomments(bug)}")
-# print(f"Keywords: {keywords(bug)}")
-# print(f"Priority: {priority(bug)}")
-# print(f"Version: {version(bug)}")
-# print(f"TargetMilestone: {targetmilestone(bug)}")
-# print(f"HasAttachment: {hasattachment(bug)}")
-# print(f"Platform: {platform(bug)}")
-# print(f"OpSys: {opsys(bug)}")
-# print(f"FiledVia: {filedvia(bug)}\n")
+# for bug_id in [1710320, 1710600, 1716375, 1716527, 1732663, 1821248, 1831260, 1840222]:
+#     bug = get_bug_details(bug_id)
+#     print(f"Bug ID: {bug["id"]}")
+#     print(f"HasSTR: {hasstr(bug)}")
+#     print(f"HasRegressionRange: {hasregressionrange(bug)}")
+#     print(f"Severity: {severity(bug)}")
+#     print(f"HasCrashSignature: {hascrashsignature(bug)}")
+#     print(f"HasURL: {hasurl(bug)}")
+#     print(f"Whiteboard: {whiteboard(bug)}")
+#     print(f"Product: {product(bug)}")
+#     print(f"NumWordsTitle: {numwordstitle(bug)}")
+#     print(f"NumWordsComments: {numwordscomments(bug)}")
+#     print(f"Keywords: {keywords(bug)}")
+#     print(f"Priority: {priority(bug)}")
+#     print(f"Version: {version(bug)}")
+#     print(f"TargetMilestone: {targetmilestone(bug)}")
+#     print(f"HasAttachment: {hasattachment(bug)}")
+#     print(f"Platform: {platform(bug)}")
+#     print(f"OpSys: {opsys(bug)}")
+#     print(f"FiledVia: {filedvia(bug)}\n")
