@@ -88,8 +88,40 @@ class FenixComponentModel(BugModel):
             if bug_data["product"] != "Fenix":
                 continue
 
+            moved_out_by_bot = False
+            moved_back_to_general_by_user = False
+            component = None
+
+            for history_entry in bug_data.get("history", []):
+                for change in history_entry.get("changes", []):
+                    if change["field_name"] == "component":
+                        if (
+                            change["removed"] == "General"
+                            and history_entry["who"]
+                            == "release-mgmt-account-bot@mozilla.tld"
+                        ):
+                            moved_out_by_bot = True
+                            component = change["added"]
+                        elif (
+                            component
+                            and change["removed"] == component
+                            and history_entry["who"]
+                            != "release-mgmt-account-bot@mozilla.tld"
+                            and moved_out_by_bot
+                        ):
+                            moved_back_to_general_by_user = True
+
+            if moved_out_by_bot and moved_back_to_general_by_user:
+                print(
+                    f"Bug ID {bug_data['id']} was moved out of General by the bot and then moved back to General by someone else."
+                )
+
             # Exclude 'General' because it contains bugs that may belong to other components, thus introducing noise.
-            if bug_data["component"] == "General":
+            if (
+                bug_data["component"] == "General"
+                and not moved_out_by_bot
+                and not moved_back_to_general_by_user
+            ):
                 continue
 
             if dateutil.parser.parse(bug_data["creation_time"]) < date_limit:
