@@ -22,7 +22,7 @@ def fetch_patch_diff(patch_id):
         return None
 
 
-def extract_relevant_diff(patch_diff, filename, start_line=None, end_line=None):
+def extract_relevant_diff(patch_diff, filename):
     file_diff_pattern = rf"diff --git a/{re.escape(filename)} b/{re.escape(filename)}\n.*?(?=\ndiff --git|$)"
     match = re.search(file_diff_pattern, patch_diff, re.DOTALL)
 
