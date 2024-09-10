@@ -9,7 +9,7 @@ from bugbug.utils import get_secret
 # define the required key phabricator (config.PHABRICATOR_API_KEY)
 db.download(phabricator.REVISIONS_DB)
 
-# download all available revisions. I don't know another to do it.
+# download all available revisions
 rev = PhabricatorAPI(get_secret("PHABRICATOR_TOKEN"))
 
 
@@ -84,13 +84,48 @@ def check_for_other_comments_on_same_line(transactions, comment_ids):
     return same_line_comments
 
 
-def generate_report(target_file, comments_report, same_line_report, target_revision):
+def check_for_other_comments_in_hunk(transactions, comment_ids, hunk_range=10):
+    comment_lines = {}
+    hunk_comments = {}
+
+    for transaction in transactions:
+        if len(transaction["fields"]) > 0 and len(transaction["comments"]) > 0:
+            for comment in transaction["comments"]:
+                if comment["id"] in comment_ids:
+                    line_number = transaction["fields"]["line"]
+                    comment_lines[comment["id"]] = line_number
+
+    for comment_id, line_number in comment_lines.items():
+        other_comments_in_hunk = False
+        for transaction in transactions:
+            if len(transaction["fields"]) > 0 and len(transaction["comments"]) > 0:
+                for comment in transaction["comments"]:
+                    if comment["id"] != comment_id:
+                        comment_line = transaction["fields"]["line"]
+                        if (
+                            line_number - hunk_range
+                            <= comment_line
+                            <= line_number + hunk_range
+                        ):
+                            other_comments_in_hunk = True
+                            break
+        hunk_comments[comment_id] = other_comments_in_hunk
+
+    return hunk_comments
+
+
+def generate_report(
+    target_file, comments_report, same_line_report, hunk_report, target_revision
+):
     with open(target_file, mode="a", newline="") as file:
         writer = csv.writer(file)
 
         for comment_report, status in comments_report.items():
             same_line_exists = same_line_report.get(comment_report, False)
-            writer.writerow([target_revision, comment_report, status, same_line_exists])
+            hunk_exists = hunk_report.get(comment_report, False)
+            writer.writerow(
+                [target_revision, comment_report, status, same_line_exists, hunk_exists]
+            )
 
 
 def run_analysis(target_file):
@@ -107,8 +142,18 @@ def run_analysis(target_file):
                     revision["transactions"], revisions.get(revision["id"])
                 )
 
+                hunk_comments = check_for_other_comments_in_hunk(
+                    revision["transactions"],
+                    revisions.get(revision["id"]),
+                    hunk_range=10,
+                )
+
                 generate_report(
-                    target_file, revision_comments, same_line_comments, revision["id"]
+                    target_file,
+                    revision_comments,
+                    same_line_comments,
+                    hunk_comments,
+                    revision["id"],
                 )
 
             except Exception as e:
