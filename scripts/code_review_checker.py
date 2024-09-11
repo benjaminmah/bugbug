@@ -5,7 +5,6 @@ from collections import defaultdict
 from libmozdata.phabricator import PhabricatorAPI
 
 from bugbug import db, phabricator
-from bugbug.tools.code_review import PhabricatorReviewData
 from bugbug.utils import get_secret
 
 # define the required key phabricator (config.PHABRICATOR_API_KEY)
@@ -13,7 +12,6 @@ db.download(phabricator.REVISIONS_DB)
 
 # download all available revisions
 rev = PhabricatorAPI(get_secret("PHABRICATOR_TOKEN"))
-review_data = PhabricatorReviewData()
 
 
 def get_target_revisions():
