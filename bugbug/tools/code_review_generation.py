@@ -101,12 +101,17 @@ def get_revision_id_from_patch(patch_id):
 
 
 def fetch_diff(revision_id, patch_id):
-    url = f"https://phabricator.services.mozilla.com/D{revision_id}?id={patch_id}&download=true"
-    response = requests.get(url)
-    if response.status_code == 200:
+    try:
+        url = f"https://phabricator.services.mozilla.com/D{revision_id}?id={patch_id}&download=true"
+        response = requests.get(url)
+        response.raise_for_status()
         return response.text
-    else:
-        raise Exception(f"Failed to download diff from URL: {url}")
+    except requests.HTTPError as e:
+        logger.error(f"HTTP error fetching diff: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return None
 
 
 def generate_prompt(
