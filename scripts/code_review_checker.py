@@ -20,14 +20,17 @@ phab = PhabricatorAPI(
 
 
 def get_target_revisions():
-    data_dict = defaultdict(list)
+    data_dict = defaultdict(lambda: {"inline_comment_ids": [], "suggestion_ids": []})
 
     with open("input/input.csv", mode="r") as file:
         reader = csv.DictReader(file)
         for row in reader:
             revision_id = int(row["revision_id"])
             inline_comment_id = int(row["inline_comment_id"])
-            data_dict[revision_id].append(inline_comment_id)
+            suggestion_id = int(row["suggestion_id"])
+
+            data_dict[revision_id]["inline_comment_ids"].append(inline_comment_id)
+            data_dict[revision_id]["suggestion_ids"].append(suggestion_id)
 
     return dict(data_dict)
 
@@ -164,6 +167,7 @@ def generate_report(
     same_hunk_comment_report,
     target_revision,
     revision_status,
+    suggestion_ids,
 ):
     file_exists = os.path.isfile(target_file)
     file_is_empty = os.stat(target_file).st_size == 0 if file_exists else True
@@ -176,7 +180,7 @@ def generate_report(
                 [
                     "Revision",
                     "Status",
-                    "Comment",
+                    "Suggestion_ID" "Comment",
                     "Thread_Line",
                     "Thread_Hunk",
                     "Revised_Line",
@@ -199,6 +203,7 @@ def generate_report(
                 [
                     target_revision,
                     revision_status,
+                    suggestion_ids,
                     comment_report,
                     status_thread_line,
                     status_thread_hunk,
@@ -363,23 +368,24 @@ def run_analysis(target_file):
                     revised_hunks_status,
                 ) = check_status_revised_line_and_hunks(
                     revision["transactions"],
-                    revisions.get(revision["id"]),
+                    revisions.get(revision["id"])["inline_comment_ids"],
                     accepted_diff,
                 )
 
                 revision_replies, hunk_replies = check_for_replies_on_target_comments(
-                    revision["transactions"], revisions.get(revision["id"])
+                    revision["transactions"],
+                    revisions.get(revision["id"])["inline_comment_ids"],
                 )
 
                 same_line_comments = check_for_comments_in_hunk(
                     transactions=revision["transactions"],
-                    comment_ids=revisions.get(revision["id"]),
+                    comment_ids=revisions.get(revision["id"])["inline_comment_ids"],
                     hunk_range=0,
                 )
 
                 hunk_comments = check_for_comments_in_hunk(
                     transactions=revision["transactions"],
-                    comment_ids=revisions.get(revision["id"]),
+                    comment_ids=revisions.get(revision["id"])["inline_comment_ids"],
                     hunk_range=10,
                 )
 
@@ -393,6 +399,7 @@ def run_analysis(target_file):
                     hunk_comments,
                     revision["id"],
                     revision["fields"]["status"]["value"],
+                    revisions.get(revision["id"])["suggestion_ids"],
                 )
 
             except Exception as e:
