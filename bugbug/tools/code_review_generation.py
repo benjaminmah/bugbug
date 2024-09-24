@@ -1,3 +1,4 @@
+import csv
 import json
 import logging
 import re
@@ -8,7 +9,6 @@ from langchain_openai import OpenAIEmbeddings
 from libmozdata.phabricator import PhabricatorAPI
 from qdrant_client import QdrantClient
 
-# from rouge_score import rouge_scorer
 from bugbug.tools.code_review import PhabricatorReviewData
 from bugbug.utils import get_secret
 from bugbug.vectordb import QdrantVectorDB, VectorPoint
@@ -59,13 +59,21 @@ class FixCommentDB:
                 points.append(vector_point)
             self.db.insert(points)
 
-    def search_similar_comment(self, comment_content: str, revision_id: int):
+    def search_similar_comment(
+        self, comment_content: str, revision_id: int, diff_length_limit: int
+    ):
         query_embedding = self.embeddings.embed_query(comment_content)
         results = self.db.search(query_embedding)
 
         for result in results:
-            if result.payload["fix_info"]["revision_id"] != revision_id:
+            if (
+                result.payload["fix_info"]["revision_id"] != revision_id
+                and len(result.payload["fix_info"]["fix_patch_diff"])
+                < diff_length_limit
+            ):
                 return result.payload["comment"], result.payload["fix_info"]
+
+        raise Exception("No similar comment found.")
 
 
 def fetch_patch_diff(patch_id):
@@ -117,125 +125,194 @@ def fetch_diff(revision_id, patch_id):
 
 
 def generate_prompt(
-    comment_content, relevant_diff, start_line, end_line, similar_comment, fix_info
+    comment_content,
+    relevant_diff,
+    start_line,
+    end_line,
+    similar_comment,
+    fix_info,
+    prompt_type,
 ):
-    prompt = f"""
-    CONTEXT:
-    You are a code review bot that generates fixes in code given an inline review comment.
-    You will be provided with the COMMENT, the LINE NUMBERS the comment is referring to,
-    and the relevant DIFF for the file affected. Your goal is to generate a code fix based
-    on the COMMENT, LINE NUMBERS, and DIFF provided, and nothing more. Generate ONLY the
-    lines you are adding/deleting, indicated by + and -. For example, if you are modifying
-    a single line, show that you are deleting (-) the line from the original diff and adding
-    (+) the fixed line. The line numbers help to contextualize the changes within the diff.
+    if prompt_type == "zero-shot":
+        prompt = f"""
+        CONTEXT:
+        You are a code review bot that generates fixes in code given an inline review comment.
+        You will be provided with the COMMENT, the LINE NUMBERS the comment is referring to,
+        and the relevant DIFF for the file affected. Your goal is to generate a code fix based
+        on the COMMENT, LINE NUMBERS, and DIFF provided, and nothing more. Generate ONLY the
+        lines you are adding/deleting, indicated by + and -. For example, if you are modifying
+        a single line, show that you are deleting (-) the line from the original diff and adding
+        (+) the fixed line. The line numbers help to contextualize the changes within the diff.
 
-    EXAMPLE:
-    COMMENT:
-    "{similar_comment}"
+        COMMENT:
+        "{comment_content}"
 
-    LINE NUMBERS:
-    {fix_info["comment"]["start_line"]}-{fix_info["comment"]["end_line"]}
+        LINE NUMBERS:
+        {start_line}-{end_line}
 
-    DIFF:
-    ```
-    {fetch_diff(fix_info["revision_id"], fix_info["initial_patch_id"])}
-    ```
+        DIFF:
+        ```
+        {relevant_diff}
+        ```
 
-    FIX:
-    ```
-    {fix_info["fix_patch_diff"]}
-    ```
+        FIX:
+        """
+    if prompt_type == "single-shot":
+        prompt = f"""
+        CONTEXT:
+        You are a code review bot that generates fixes in code given an inline review comment.
+        You will be provided with the COMMENT, the LINE NUMBERS the comment is referring to,
+        and the relevant DIFF for the file affected. Your goal is to generate a code fix based
+        on the COMMENT, LINE NUMBERS, and DIFF provided, and nothing more. Generate ONLY the
+        lines you are adding/deleting, indicated by + and -. For example, if you are modifying
+        a single line, show that you are deleting (-) the line from the original diff and adding
+        (+) the fixed line. The line numbers help to contextualize the changes within the diff.
+        An EXAMPLE has been provided for your reference.
 
-    YOUR TURN:
-    COMMENT:
-    "{comment_content}"
+        EXAMPLE:
+        COMMENT:
+        "{similar_comment}"
 
-    LINE NUMBERS:
-    {start_line}-{end_line}
+        LINE NUMBERS:
+        {fix_info["comment"]["start_line"]}-{fix_info["comment"]["end_line"]}
 
-    DIFF:
-    ```
-    {relevant_diff}
-    ```
+        DIFF:
+        ```
+        {fetch_diff(fix_info["revision_id"], fix_info["initial_patch_id"])}
+        ```
 
-    FIX:
-    """
+        FIX:
+        ```
+        {fix_info["fix_patch_diff"]}
+        ```
+
+        YOUR TURN:
+        COMMENT:
+        "{comment_content}"
+
+        LINE NUMBERS:
+        {start_line}-{end_line}
+
+        DIFF:
+        ```
+        {relevant_diff}
+        ```
+
+        FIX:
+        """
     return prompt
 
 
-def generate_fixes(client, db):
-    limit = 3
+def generate_fixes(
+    client, db, generation_limit, diff_length_limits, prompt_types, output_csv
+):
     counter = 0
-
     revision_ids = extract_revision_id_list_from_dataset("data/fixed_comments.json")
 
-    for patch_id, comments in review_data.get_all_inline_comments(lambda c: True):
-        revision_id = get_revision_id_from_patch(patch_id)
+    with open(output_csv, mode="w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(
+            [
+                "Revision ID",
+                "Patch ID",
+                "Prompt Type",
+                "Length Limit",
+                "Precision",
+                "Recall",
+                "F1",
+            ]
+        )
 
-        if not revision_id:
-            logger.error(f"Skipping Patch ID {patch_id} as no revision ID found.")
-            continue
+        for patch_id, comments in review_data.get_all_inline_comments(lambda c: True):
+            revision_id = get_revision_id_from_patch(patch_id)
 
-        if revision_id not in revision_ids:
-            logger.error(
-                f"Skipping Patch ID {patch_id} as revision ID {revision_id} not in dataset."
-            )
-            continue
+            if not revision_id:
+                logger.error(f"Skipping Patch ID {patch_id} as no revision ID found.")
+                continue
 
-        diff = fetch_diff(revision_id, patch_id)
-
-        if not diff:
-            logger.error(f"Skipping Patch ID {patch_id} as no diff found.")
-            continue
-
-        for comment in comments:
-            filename = comment.filename
-
-            relevant_diff = extract_relevant_diff(diff, filename)
-
-            if relevant_diff:
-                similar_comment, fix_info = db.search_similar_comment(
-                    comment.content, revision_id
+            if revision_id not in revision_ids:
+                logger.error(
+                    f"Skipping Patch ID {patch_id} as revision ID {revision_id} not in dataset."
                 )
+                continue
 
-                prompt = generate_prompt(
-                    comment.content,
-                    relevant_diff,
-                    comment.start_line,
-                    comment.end_line,
-                    similar_comment,
-                    fix_info,
-                )
-                print(
-                    f"\nPrompt for Comment ID {comment.id} in Revision {revision_id}:\n{prompt}\n"
-                )
+            diff = fetch_diff(revision_id, patch_id)
 
-                stream = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[{"role": "user", "content": prompt}],
-                    stream=True,
-                )
+            if not diff:
+                logger.error(f"Skipping Patch ID {patch_id} as no diff found.")
+                continue
 
-                generated_fix = ""
-
-                print(
-                    f"Generated fix for Comment ID {comment.id} in Revision {revision_id}:\n"
-                )
-                for chunk in stream:
-                    if chunk.choices[0].delta.content is not None:
-                        generated_fix += chunk.choices[0].delta.content
-                        print(chunk.choices[0].delta.content, end="")
-
-                compare_fixes(
-                    revision_id, patch_id, generated_fix, "data/fixed_comments.json"
-                )
-
-                counter += 1
-
-                if counter >= limit:
+            for comment in comments:
+                if counter >= generation_limit:
                     return
-            else:
-                print(f"No relevant diff found for Comment ID {comment.id}.\n")
+
+                filename = comment.filename
+
+                relevant_diff = extract_relevant_diff(diff, filename)
+
+                if relevant_diff:
+                    for prompt_type in prompt_types:
+                        if counter >= generation_limit:
+                            break
+
+                        for diff_length_limit in diff_length_limits:
+                            try:
+                                if counter >= generation_limit:
+                                    break
+
+                                similar_comment, fix_info = db.search_similar_comment(
+                                    comment.content, revision_id, diff_length_limit
+                                )
+
+                                prompt = generate_prompt(
+                                    comment.content,
+                                    relevant_diff,
+                                    comment.start_line,
+                                    comment.end_line,
+                                    similar_comment,
+                                    fix_info,
+                                    prompt_type,
+                                )
+
+                                stream = client.chat.completions.create(
+                                    model="gpt-4o",
+                                    messages=[{"role": "user", "content": prompt}],
+                                    stream=True,
+                                )
+
+                                generated_fix = ""
+                                for chunk in stream:
+                                    if chunk.choices[0].delta.content is not None:
+                                        generated_fix += chunk.choices[0].delta.content
+
+                                metrics = compare_fixes(
+                                    revision_id,
+                                    patch_id,
+                                    generated_fix,
+                                    "data/fixed_comments.json",
+                                )
+
+                                writer.writerow(
+                                    [
+                                        revision_id,
+                                        patch_id,
+                                        prompt_type,
+                                        diff_length_limit,
+                                        metrics["precision"],
+                                        metrics["recall"],
+                                        metrics["f1"],
+                                    ]
+                                )
+
+                                counter += 1
+
+                            except Exception as e:
+                                logger.error(
+                                    f"Error processing Comment ID {comment.id} with {prompt_type} and limit {diff_length_limit}: {e}"
+                                )
+
+                else:
+                    print(f"No relevant diff found for Comment ID {comment.id}.\n")
 
 
 def extract_revision_id_list_from_dataset(dataset_file):
@@ -250,9 +327,6 @@ def extract_revision_id_list_from_dataset(dataset_file):
 
 
 def calculate_metrics(reference_fix, generated_fix):
-    # scorer = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)
-    # rouge_scores = scorer.score(reference_fix, generated_fix)
-
     reference_tokens = reference_fix.split()
     generated_tokens = generated_fix.split()
 
@@ -265,9 +339,6 @@ def calculate_metrics(reference_fix, generated_fix):
         "precision": precision,
         "recall": recall,
         "f1": f1,
-        # "rouge1": rouge_scores["rouge1"].fmeasure,
-        # "rouge2": rouge_scores["rouge2"].fmeasure,
-        # "rougeL": rouge_scores["rougeL"].fmeasure,
     }
 
 
@@ -292,8 +363,7 @@ def compare_fixes(revision_id, initial_patch_id, generated_fix, dataset_file):
 
     if reference_fix:
         metrics = calculate_metrics(reference_fix, generated_fix)
-        print(f"Metrics for Revision {revision_id} and Patch ID {initial_patch_id}:")
-        print(json.dumps(metrics, indent=4))
+        return metrics
     else:
         print(
             f"No matching fix found in the dataset for Revision {revision_id} and Patch {initial_patch_id}."
@@ -311,7 +381,20 @@ def main():
         db.upload_dataset("data/fixed_comments.json")
 
     client = openai.OpenAI(api_key=get_secret("OPENAI_API_KEY"))
-    generate_fixes(client, db)
+
+    prompt_types = ["zero-shot", "single-shot"]
+    diff_length_limits = [100, 1000, 10000]
+    output_csv = "metrics_results.csv"
+    generation_limit = len(prompt_types) * len(diff_length_limits) + 20
+
+    generate_fixes(
+        client=client,
+        db=db,
+        generation_limit=generation_limit,
+        prompt_types=prompt_types,
+        diff_length_limits=diff_length_limits,
+        output_csv=output_csv,
+    )
 
 
 if __name__ == "__main__":
