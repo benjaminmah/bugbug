@@ -66,7 +66,7 @@ def get_associated_hunk_from_comment_ids(transaction, target_line, path):
     return None
 
 
-def check_for_replies_on_target_comments(transactions, comment_ids):
+def check_for_replies_on_target_comments(transactions, comment_ids, suggestion_ids):
     comment_phids = collect_phid_from_comment_ids(transactions, comment_ids)
     comment_status = {}
     comment_status_hunks = {}
@@ -90,7 +90,10 @@ def check_for_replies_on_target_comments(transactions, comment_ids):
 
     for comment_id in comment_ids:
         if comment_id not in comment_status:
-            comment_status[comment_id] = False
+            comment_status[comment_id] = {
+                "reply_exists": True,
+                "suggestion_id": suggestion_ids[comment_ids.index(comment_id)],
+            }
 
     for key, value in comment_status_hunks.items():
         if len(value) > 1:
@@ -167,7 +170,6 @@ def generate_report(
     same_hunk_comment_report,
     target_revision,
     revision_status,
-    suggestion_ids,
 ):
     file_exists = os.path.isfile(target_file)
     file_is_empty = os.stat(target_file).st_size == 0 if file_exists else True
@@ -180,7 +182,8 @@ def generate_report(
                 [
                     "Revision",
                     "Status",
-                    "Suggestion_ID" "Comment",
+                    "Suggestion_ID",
+                    "Comment_ID",
                     "Thread_Line",
                     "Thread_Hunk",
                     "Revised_Line",
@@ -198,14 +201,15 @@ def generate_report(
             status_thread_hunk = hunk_report.get(comment_report, False)
             revised_line_status = revised_lines_status.get(comment_report, False)
             revised_hunk_status = revised_hunks_status.get(comment_report, False)
+            suggestion_id = status_thread_line.get("suggestion_id")
 
             writer.writerow(
                 [
                     target_revision,
                     revision_status,
-                    suggestion_ids,
+                    suggestion_id,
                     comment_report,
-                    status_thread_line,
+                    status_thread_line.get("reply_exists"),
                     status_thread_hunk,
                     revised_line_status,
                     revised_hunk_status,
@@ -375,6 +379,7 @@ def run_analysis(target_file):
                 revision_replies, hunk_replies = check_for_replies_on_target_comments(
                     revision["transactions"],
                     revisions.get(revision["id"])["inline_comment_ids"],
+                    revisions.get(revision["id"])["suggestion_ids"],
                 )
 
                 same_line_comments = check_for_comments_in_hunk(
@@ -399,7 +404,6 @@ def run_analysis(target_file):
                     hunk_comments,
                     revision["id"],
                     revision["fields"]["status"]["value"],
-                    revisions.get(revision["id"])["suggestion_ids"],
                 )
 
             except Exception as e:
