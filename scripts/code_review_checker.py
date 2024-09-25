@@ -59,7 +59,7 @@ def get_associated_hunk_from_comment_ids(transaction, target_line, path):
                 for line in hunk:
                     # Check if the line is part of the original or modified file
                     if line.target_line_no == target_line:
-                        return patch_count
+                        return patched_file.index(hunk)
 
         patch_count += 1
 
@@ -71,34 +71,108 @@ def check_for_replies_on_target_comments(transactions, comment_ids, suggestion_i
     comment_status = {}
     comment_status_hunks = {}
     comment_status_hunks_output = {}
+    comments_additional_info = {}
 
     for transaction in transactions:
-        if (
-            len(transaction["fields"]) > 0 and len(transaction["comments"]) > 0
-        ) and transaction["fields"]["replyToCommentPHID"] in comment_phids.keys():
-            comment_status[
-                comment_phids.get(transaction["fields"]["replyToCommentPHID"])
-            ] = True
-            associated_hunk = get_associated_hunk_from_comment_ids(
-                transaction["fields"],
-                transaction["fields"]["line"],
-                transaction["fields"]["path"],
-            )
-            comment_status_hunks[associated_hunk] = [
-                comment_phids.get(transaction["fields"]["replyToCommentPHID"])
-            ]
+        if len(transaction["fields"]) > 0 and len(transaction["comments"]) > 0:
+            for comment in transaction["comments"]:
+                if comment["id"] in comment_ids:
+                    associated_hunk = get_associated_hunk_from_comment_ids(
+                        transaction["fields"],
+                        transaction["fields"]["line"],
+                        transaction["fields"]["path"],
+                    )
+                    if associated_hunk in comments_additional_info.keys():
+                        comments_additional_info[associated_hunk].append(
+                            {
+                                "path": transaction["fields"]["path"],
+                                "line": transaction["fields"]["line"],
+                                "fields": transaction["fields"],
+                                "comment_id": comment["id"],
+                            }
+                        )
+                    else:
+                        comments_additional_info[associated_hunk] = [
+                            {
+                                "path": transaction["fields"]["path"],
+                                "line": transaction["fields"]["line"],
+                                "fields": transaction["fields"],
+                                "comment_id": comment["id"],
+                            }
+                        ]
+
+    for transaction in transactions:
+        if len(transaction["fields"]) > 0 and len(transaction["comments"]) > 0:
+            if transaction["fields"]["replyToCommentPHID"] in comment_phids.keys():
+                comment_status[
+                    comment_phids.get(transaction["fields"]["replyToCommentPHID"])
+                ] = {
+                    "reply_exists": True,
+                    "suggestion_id": suggestion_ids[
+                        comment_ids.index(
+                            comment_phids.get(
+                                transaction["fields"]["replyToCommentPHID"]
+                            )
+                        )
+                    ],
+                }
+
+            for key in comments_additional_info.keys():
+                for comment_additional_info in comments_additional_info[key]:
+                    associated_hunk = get_associated_hunk_from_comment_ids(
+                        transaction["fields"],
+                        transaction["fields"]["line"],
+                        transaction["fields"]["path"],
+                    )
+
+                    target_hunk = get_associated_hunk_from_comment_ids(
+                        comment_additional_info["fields"],
+                        comment_additional_info["fields"]["line"],
+                        comment_additional_info["fields"]["path"],
+                    )
+
+                    if (
+                        target_hunk == associated_hunk
+                        and comment_additional_info["fields"]["path"]
+                        == transaction["fields"]["path"]
+                    ):
+                        if (
+                            transaction["comments"][0]["phid"]
+                            not in comment_phids.keys()
+                        ):
+                            if associated_hunk in comment_status_hunks.keys():
+                                if (
+                                    transaction["comments"][0]["phid"]
+                                    not in comment_status_hunks[associated_hunk]
+                                ):
+                                    comment_status_hunks[associated_hunk].append(
+                                        transaction["comments"][0]["phid"]
+                                    )
+                            else:
+                                comment_status_hunks[associated_hunk] = [
+                                    transaction["comments"][0]["phid"]
+                                ]
 
     for comment_id in comment_ids:
         if comment_id not in comment_status:
             comment_status[comment_id] = {
-                "reply_exists": True,
+                "reply_exists": False,
                 "suggestion_id": suggestion_ids[comment_ids.index(comment_id)],
             }
 
-    for key, value in comment_status_hunks.items():
-        if len(value) > 1:
-            for comment_id in value:
-                comment_status_hunks_output[comment_id] = True
+    temp_hunks = {}
+    for transaction in transactions:
+        if len(transaction["fields"]) > 0 and len(transaction["comments"]) > 0:
+            for key, values in comment_status_hunks.items():
+                if transaction["fields"]["replyToCommentPHID"] in values:
+                    temp_hunks[key] = {
+                        "reply_exists": True,
+                    }
+
+    for key in comments_additional_info.keys():
+        if key in temp_hunks.keys() and temp_hunks[key]["reply_exists"]:
+            for comment_id in comments_additional_info[key]:
+                comment_status_hunks_output[comment_id["comment_id"]] = True
 
     for comment_id in comment_ids:
         if comment_id not in comment_status_hunks_output:
@@ -411,4 +485,4 @@ def run_analysis(target_file):
 
 
 if __name__ == "__main__":
-    run_analysis("comment-status-final.csv")
+    run_analysis("comment-status.csv")
