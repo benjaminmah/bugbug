@@ -200,6 +200,23 @@ def generate_prompt(
 
         FIX:
         """
+    if prompt_type == "study":
+        prompt = f"""
+        You are a software developer who has to change the code below by following a given Code Review. The Code Review is attached to the line of code starting with the line number Start_Line and ending with the line number End_Line. There are also characters (- and +) showing where a line of code in the diff hunk has been removed (marked with a - at the beginning of the line) or added (marked with a + at the beginning of the line). The removed lines (including the - character) must not be incorporated with the New Code unless the Code Review requires to do otherwise. Instead, the added lines (without the + character) must be incorporated in the New Code unless the Code Review requires to do otherwise. Your output must not contain any trailing tokens/characters. Your output must adhere to the following format: "Short Explanation: [...] \n New Code: [...]"
+
+        Start_Line:
+        {start_line}
+
+        End_Line:
+        {end_line}
+
+        Code Review:
+        {comment_content}
+
+        Diff Hunk:
+        {relevant_diff}
+        """
+
     return prompt
 
 
@@ -278,6 +295,8 @@ def generate_fixes(
                                     model="gpt-4o",
                                     messages=[{"role": "user", "content": prompt}],
                                     stream=True,
+                                    temperature=0.2,
+                                    top_p=0.1,
                                 )
 
                                 generated_fix = ""
@@ -382,10 +401,10 @@ def main():
 
     client = openai.OpenAI(api_key=get_secret("OPENAI_API_KEY"))
 
-    prompt_types = ["zero-shot", "single-shot"]
+    prompt_types = ["zero-shot", "single-shot", "study"]
     diff_length_limits = [100, 1000, 10000]
     output_csv = "metrics_results.csv"
-    generation_limit = len(prompt_types) * len(diff_length_limits) + 20
+    generation_limit = len(prompt_types) * len(diff_length_limits) + 30
 
     generate_fixes(
         client=client,
