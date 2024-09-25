@@ -8,6 +8,7 @@ import requests
 from langchain_openai import OpenAIEmbeddings
 from libmozdata.phabricator import PhabricatorAPI
 from qdrant_client import QdrantClient
+from transformers import AutoModel, pipeline
 
 from bugbug.tools.code_review import PhabricatorReviewData
 from bugbug.utils import get_secret
@@ -202,7 +203,15 @@ def generate_prompt(
         """
     if prompt_type == "study":
         prompt = f"""
-        You are a software developer who has to change the code below by following a given Code Review. The Code Review is attached to the line of code starting with the line number Start_Line and ending with the line number End_Line. There are also characters (- and +) showing where a line of code in the diff hunk has been removed (marked with a - at the beginning of the line) or added (marked with a + at the beginning of the line). The removed lines (including the - character) must not be incorporated with the New Code unless the Code Review requires to do otherwise. Instead, the added lines (without the + character) must be incorporated in the New Code unless the Code Review requires to do otherwise. Your output must not contain any trailing tokens/characters. Your output must adhere to the following format: "Short Explanation: [...] \n New Code: [...]"
+        You are a software developer who has to change the code below by following a given Code Review.
+        The Code Review is attached to the line of code starting with the line number Start_Line and
+        ending with the line number End_Line. There are also characters (- and +) showing where a line
+        of code in the diff hunk has been removed (marked with a - at the beginning of the line) or added
+        (marked with a + at the beginning of the line). The removed lines (including the - character)
+        must not be incorporated with the New Code unless the Code Review requires to do otherwise. Instead,
+        the added lines (without the + character) must be incorporated in the New Code unless the Code
+        Review requires to do otherwise. Your output must not contain any trailing tokens/characters.
+        Your output must adhere to the following format: "Short Explanation: [...] \n New Code: [...]"
 
         Start_Line:
         {start_line}
@@ -417,4 +426,20 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    from transformers import AutoTokenizer, pipeline
+
+    model_name = "mistralai/Mamba-Codestral-7B-v0.1"
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModel.from_pretrained(model_name)
+
+    text_generator = pipeline(
+        "text-generation", model=model, tokenizer=tokenizer, device=1
+    )
+
+    prompt = "Once upon a time in a distant land, there was a coder who"
+
+    generated_text = text_generator(prompt, max_length=50, num_return_sequences=1)
+
+    print(generated_text[0]["generated_text"])
