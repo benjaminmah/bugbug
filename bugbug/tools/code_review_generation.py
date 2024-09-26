@@ -5,7 +5,6 @@ import re
 
 import openai
 import requests
-import zstandard as zstd
 from langchain_openai import OpenAIEmbeddings
 from libmozdata.phabricator import PhabricatorAPI
 from qdrant_client import QdrantClient
@@ -243,9 +242,15 @@ def generate_fixes(
                 "Patch ID",
                 "Prompt Type",
                 "Length Limit",
+                "Comment Length",
+                "Generated Code Length",
                 "Precision",
                 "Recall",
                 "F1",
+                "Qualitative Feedback",
+                "File Path",
+                "Comment",
+                "Generated Fix",
             ]
         )
 
@@ -273,7 +278,6 @@ def generate_fixes(
                     return
 
                 filename = comment.filename
-
                 relevant_diff = extract_relevant_diff(diff, filename)
 
                 if relevant_diff:
@@ -320,15 +324,47 @@ def generate_fixes(
                                     "data/fixed_comments.json",
                                 )
 
+                                comment_length = len(comment.content)
+                                generated_code_length = len(generated_fix)
+                                file_path = filename
+
+                                feedback_prompt = f"""
+                                Comment: {comment.content}
+                                Generated Fix: {generated_fix}
+                                Diff: {relevant_diff}
+
+                                Does the generated fix address the comment correctly? Answer YES or NO, followed by a short and succinct explanation.
+                                """
+                                stream2 = client.chat.completions.create(
+                                    model="gpt-4o",
+                                    messages=[
+                                        {"role": "user", "content": feedback_prompt}
+                                    ],
+                                    stream=True,
+                                )
+
+                                qualitative_feedback = ""
+                                for chunk in stream2:
+                                    if chunk.choices[0].delta.content is not None:
+                                        qualitative_feedback += chunk.choices[
+                                            0
+                                        ].delta.content
+
                                 writer.writerow(
                                     [
                                         revision_id,
                                         patch_id,
                                         prompt_type,
                                         diff_length_limit,
+                                        comment_length,
+                                        generated_code_length,
                                         metrics["precision"],
                                         metrics["recall"],
                                         metrics["f1"],
+                                        qualitative_feedback,
+                                        file_path,
+                                        comment.content,
+                                        generated_fix,
                                     ]
                                 )
 
@@ -425,24 +461,5 @@ def main():
     )
 
 
-def decompress_json_zst(input_file_path, output_file_path):
-    with open(input_file_path, "rb") as compressed_file:
-        dctx = zstd.ZstdDecompressor()
-        decompressed_content = dctx.decompress(compressed_file.read())
-
-    json_lines = decompressed_content.decode("utf-8").splitlines()
-
-    parsed_objects = []
-    for line in json_lines:
-        try:
-            parsed_objects.append(json.loads(line))
-        except json.JSONDecodeError as e:
-            print(f"Error parsing line: {e}")
-
-    with open(output_file_path, "w") as json_file:
-        json.dump(parsed_objects, json_file, indent=4)
-
-
 if __name__ == "__main__":
-    # main()
-    decompress_json_zst("data/bugs2.json.zst", "data/bugs2.json")
+    main()
