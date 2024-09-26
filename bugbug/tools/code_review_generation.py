@@ -5,10 +5,10 @@ import re
 
 import openai
 import requests
+import zstandard as zstd
 from langchain_openai import OpenAIEmbeddings
 from libmozdata.phabricator import PhabricatorAPI
 from qdrant_client import QdrantClient
-from transformers import AutoModel, pipeline
 
 from bugbug.tools.code_review import PhabricatorReviewData
 from bugbug.utils import get_secret
@@ -425,21 +425,24 @@ def main():
     )
 
 
+def decompress_json_zst(input_file_path, output_file_path):
+    with open(input_file_path, "rb") as compressed_file:
+        dctx = zstd.ZstdDecompressor()
+        decompressed_content = dctx.decompress(compressed_file.read())
+
+    json_lines = decompressed_content.decode("utf-8").splitlines()
+
+    parsed_objects = []
+    for line in json_lines:
+        try:
+            parsed_objects.append(json.loads(line))
+        except json.JSONDecodeError as e:
+            print(f"Error parsing line: {e}")
+
+    with open(output_file_path, "w") as json_file:
+        json.dump(parsed_objects, json_file, indent=4)
+
+
 if __name__ == "__main__":
     # main()
-    from transformers import AutoTokenizer, pipeline
-
-    model_name = "mistralai/Mamba-Codestral-7B-v0.1"
-
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModel.from_pretrained(model_name)
-
-    text_generator = pipeline(
-        "text-generation", model=model, tokenizer=tokenizer, device=1
-    )
-
-    prompt = "Once upon a time in a distant land, there was a coder who"
-
-    generated_text = text_generator(prompt, max_length=50, num_return_sequences=1)
-
-    print(generated_text[0]["generated_text"])
+    decompress_json_zst("data/bugs2.json.zst", "data/bugs2.json")
