@@ -225,6 +225,41 @@ def generate_prompt(
         {relevant_diff}
         """
 
+    prompt = f"""
+        CONTEXT:
+        You are a code review bot that generates fixes in code based on an inline review comment.
+        You will be provided with the COMMENT, the LINE NUMBERS the comment is referring to,
+        and the relevant DIFF for the affected file. Your goal is to carefully analyze the COMMENT,
+        LINE NUMBERS, and DIFF provided, and generate a code fix accordingly. Only make changes
+        directly relevant to the feedback.
+
+        THINKING PROCESS:
+        1. **Understand the COMMENT**: Carefully read the comment to grasp the reviewer’s intention.
+        2. **Locate the Relevant Lines**: Use the provided LINE NUMBERS to pinpoint the exact lines
+           in the DIFF that need modification.
+        3. **Analyze the DIFF**: Review the current state of the code in the DIFF to understand
+           what is currently implemented.
+        4. **Determine Necessary Changes**: Based on the COMMENT, decide what needs to be added,
+           modified, or removed in the code. Focus on addressing the feedback without introducing
+           unnecessary changes.
+        5. **Generate the FIX**: Output the exact lines you are adding or deleting, using + and -
+           symbols to indicate modifications. For example, if a line is being modified, show it as
+           being removed (-) and then the corrected line as being added (+).
+
+        COMMENT:
+        "{comment_content}"
+
+        LINE NUMBERS:
+        {start_line}-{end_line}
+
+        DIFF:
+        ```
+        {relevant_diff}
+        ```
+
+        FIX:
+        """
+
     return prompt
 
 
@@ -251,6 +286,7 @@ def generate_fixes(
                 "File Path",
                 "Comment",
                 "Generated Fix",
+                "Actual Fix",
             ]
         )
 
@@ -317,11 +353,12 @@ def generate_fixes(
                                     if chunk.choices[0].delta.content is not None:
                                         generated_fix += chunk.choices[0].delta.content
 
+                                reference_fix = find_fix_in_dataset(
+                                    revision_id, patch_id, "data/fixed_comments.json"
+                                )
+
                                 metrics = compare_fixes(
-                                    revision_id,
-                                    patch_id,
-                                    generated_fix,
-                                    "data/fixed_comments.json",
+                                    revision_id, patch_id, generated_fix, reference_fix
                                 )
 
                                 comment_length = len(comment.content)
@@ -365,6 +402,7 @@ def generate_fixes(
                                         file_path,
                                         comment.content,
                                         generated_fix,
+                                        reference_fix,
                                     ]
                                 )
 
@@ -422,9 +460,7 @@ def find_fix_in_dataset(
     return None
 
 
-def compare_fixes(revision_id, initial_patch_id, generated_fix, dataset_file):
-    reference_fix = find_fix_in_dataset(revision_id, initial_patch_id, dataset_file)
-
+def compare_fixes(revision_id, initial_patch_id, generated_fix, reference_fix):
     if reference_fix:
         metrics = calculate_metrics(reference_fix, generated_fix)
         return metrics
@@ -446,10 +482,10 @@ def main():
 
     client = openai.OpenAI(api_key=get_secret("OPENAI_API_KEY"))
 
-    prompt_types = ["zero-shot", "single-shot", "study"]
+    prompt_types = ["chain-of-thought", "zero-shot", "single-shot", "study"]
     diff_length_limits = [100, 1000, 10000]
     output_csv = "metrics_results.csv"
-    generation_limit = len(prompt_types) * len(diff_length_limits) + 30
+    generation_limit = len(prompt_types) * len(diff_length_limits)
 
     generate_fixes(
         client=client,
