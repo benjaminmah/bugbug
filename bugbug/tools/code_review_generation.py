@@ -85,11 +85,82 @@ def fetch_patch_diff(patch_id):
         return None
 
 
-def extract_relevant_diff(patch_diff, filename):
+def extract_relevant_diff(patch_diff, filename, start_line, end_line, hunk_size):
     file_diff_pattern = rf"diff --git a/{re.escape(filename)} b/{re.escape(filename)}\n.*?(?=\ndiff --git|$)"
     match = re.search(file_diff_pattern, patch_diff, re.DOTALL)
 
     if match:
+        # print(f"Diff found for file: {filename}:\n{match.group(0)}")
+        # print("\n\n\n\n")
+        # print(f"Lines: {start_line}-{end_line}")
+
+        # Extract hunk header
+        hunk_header_pattern = r"@@ -(\d+),\d+ \+(\d+),\d+ @@"
+        match2 = re.search(hunk_header_pattern, match.group(0))
+
+        if match2:
+            diff_lines = match.group(0).split("\n")
+
+            deletion_start_line = int(match2.group(1))
+            addition_start_line = int(match2.group(2))
+
+            added_lines = []
+            deleted_lines = []
+
+            for line in diff_lines[diff_lines.index(match2.group()) + 1 :]:
+                if line.startswith("-"):
+                    deleted_lines.append(line)
+                elif line.startswith("+"):
+                    added_lines.append(line)
+
+            # find first and last deletion/addition within hunk size from comment starting and ending lines
+            deletion_start_diff_line = deleted_lines[
+                min(
+                    len(deleted_lines) - 1,
+                    max(0, start_line - deletion_start_line - hunk_size),
+                )
+            ]
+            deletion_end_diff_line = deleted_lines[
+                max(
+                    0,
+                    min(
+                        len(deleted_lines) - 1,
+                        end_line - deletion_start_line + hunk_size,
+                    ),
+                )
+            ]
+
+            addition_start_diff_line = added_lines[
+                min(
+                    len(added_lines) - 1,
+                    max(0, start_line - addition_start_line - hunk_size),
+                )
+            ]
+            addition_end_diff_line = added_lines[
+                max(
+                    0,
+                    min(
+                        len(added_lines) - 1, end_line - addition_start_line + hunk_size
+                    ),
+                )
+            ]
+
+            print(f"deletion_start_diff_line: {deletion_start_diff_line}")
+            print(f"deletion_end_diff_line: {deletion_end_diff_line}")
+
+            print(f"addition_start_diff_line: {addition_start_diff_line}")
+            print(f"addition_end_diff_line: {addition_end_diff_line}")
+
+            for line in match.group(0).split("\n"):
+                if line == deletion_start_diff_line:
+                    print(f"Found start line: {line}")
+                if line == deletion_end_diff_line:
+                    print(f"Found end line: {line}")
+                if line == addition_start_diff_line:
+                    print(f"Found start line: {line}")
+                if line == addition_end_diff_line:
+                    print(f"Found end line: {line}")
+
         return match.group(0)
     else:
         logger.error(f"No diff found for file: {filename}")
@@ -314,7 +385,9 @@ def generate_fixes(
                     return
 
                 filename = comment.filename
-                relevant_diff = extract_relevant_diff(diff, filename)
+                relevant_diff = extract_relevant_diff(
+                    diff, filename, comment.start_line, comment.end_line, 5
+                )
 
                 if relevant_diff:
                     for prompt_type in prompt_types:
@@ -482,8 +555,10 @@ def main():
 
     client = openai.OpenAI(api_key=get_secret("OPENAI_API_KEY"))
 
-    prompt_types = ["chain-of-thought", "zero-shot", "single-shot", "study"]
-    diff_length_limits = [100, 1000, 10000]
+    prompt_types = [
+        "single-shot"
+    ]  # ["chain-of-thought", "zero-shot", "single-shot", "study"]
+    diff_length_limits = [10000]  # [100, 1000, 10000]
     output_csv = "metrics_results.csv"
     generation_limit = len(prompt_types) * len(diff_length_limits)
 
