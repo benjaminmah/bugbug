@@ -73,7 +73,7 @@ class FixCommentDB:
             ):
                 return result.payload["comment"], result.payload["fix_info"]
 
-        raise Exception("No similar comment found.")
+        return None, None
 
 
 def fetch_patch_diff(patch_id):
@@ -90,7 +90,6 @@ def extract_relevant_diff(patch_diff, filename, start_line, end_line, hunk_size)
     match = re.search(file_diff_pattern, patch_diff, re.DOTALL)
 
     if match:
-        # Extract hunk header
         hunk_header_pattern = r"@@ -(\d+),\d+ \+(\d+),\d+ @@"
         match2 = re.search(hunk_header_pattern, match.group(0))
 
@@ -108,6 +107,10 @@ def extract_relevant_diff(patch_diff, filename, start_line, end_line, hunk_size)
                     deleted_lines.append(line)
                 elif line.startswith("+"):
                     added_lines.append(line)
+
+            if not deleted_lines or not added_lines:
+                logger.error(f"No deleted or added lines found for file: {filename}")
+                return None
 
             deletion_start_diff_line = deleted_lines[
                 min(
@@ -203,6 +206,7 @@ def generate_prompt(
     similar_comment,
     fix_info,
     prompt_type,
+    hunk_size,
 ):
     if prompt_type == "zero-shot":
         prompt = f"""
@@ -230,6 +234,25 @@ def generate_prompt(
         FIX:
         """
     if prompt_type == "single-shot":
+        example_initial_diff = fetch_diff(
+            fix_info["revision_id"], fix_info["initial_patch_id"]
+        )
+        example_relevant_initial_diff = extract_relevant_diff(
+            example_initial_diff,
+            fix_info["comment"]["filename"],
+            fix_info["comment"]["start_line"],
+            fix_info["comment"]["end_line"],
+            hunk_size,
+        )
+
+        example_relevant_fix_diff = extract_relevant_diff(
+            fix_info["fix_patch_diff"],
+            fix_info["comment"]["filename"],
+            fix_info["comment"]["start_line"],
+            fix_info["comment"]["end_line"],
+            hunk_size,
+        )
+
         prompt = f"""
         CONTEXT:
         You are a code review bot that generates fixes in code given an inline review comment.
@@ -251,12 +274,12 @@ def generate_prompt(
 
         DIFF:
         ```
-        {fetch_diff(fix_info["revision_id"], fix_info["initial_patch_id"])}
+        {example_relevant_initial_diff}
         ```
 
         FIX:
         ```
-        {fix_info["fix_patch_diff"]}
+        {example_relevant_fix_diff}
         ```
 
         YOUR TURN:
@@ -297,8 +320,8 @@ def generate_prompt(
         Diff Hunk:
         {relevant_diff}
         """
-
-    prompt = f"""
+    if prompt_type == "chain-of-thought":
+        prompt = f"""
         CONTEXT:
         You are a code review bot that generates fixes in code based on an inline review comment.
         You will be provided with the COMMENT, the LINE NUMBERS the comment is referring to,
@@ -409,83 +432,89 @@ def generate_fixes(
                                 break
 
                             for diff_length_limit in diff_length_limits:
-                                try:
-                                    if counter >= generation_limit:
-                                        break
+                                # try:
+                                if counter >= generation_limit:
+                                    break
 
-                                    (
-                                        similar_comment,
-                                        fix_info,
-                                    ) = db.search_similar_comment(
-                                        comment.content, revision_id, diff_length_limit
+                                (
+                                    similar_comment,
+                                    fix_info,
+                                ) = db.search_similar_comment(
+                                    comment.content, revision_id, diff_length_limit
+                                )
+
+                                if similar_comment is None or fix_info is None:
+                                    logger.info(
+                                        f"No similar comment found for comment: {comment.content}"
                                     )
+                                    continue
 
-                                    prompt = generate_prompt(
-                                        comment.content,
-                                        relevant_diff,
-                                        comment.start_line,
-                                        comment.end_line,
-                                        similar_comment,
-                                        fix_info,
-                                        prompt_type,
-                                    )
+                                prompt = generate_prompt(
+                                    comment.content,
+                                    relevant_diff,
+                                    comment.start_line,
+                                    comment.end_line,
+                                    similar_comment,
+                                    fix_info,
+                                    prompt_type,
+                                    hunk_size,
+                                )
 
-                                    stream = client.chat.completions.create(
-                                        model="gpt-4o",
-                                        messages=[{"role": "user", "content": prompt}],
-                                        stream=True,
-                                        temperature=0.2,
-                                        top_p=0.1,
-                                    )
+                                stream = client.chat.completions.create(
+                                    model="gpt-4o",
+                                    messages=[{"role": "user", "content": prompt}],
+                                    stream=True,
+                                    temperature=0.2,
+                                    top_p=0.1,
+                                )
 
-                                    generated_fix = ""
-                                    for chunk in stream:
-                                        if chunk.choices[0].delta.content is not None:
-                                            generated_fix += chunk.choices[
-                                                0
-                                            ].delta.content
+                                generated_fix = ""
+                                for chunk in stream:
+                                    if chunk.choices[0].delta.content is not None:
+                                        generated_fix += chunk.choices[0].delta.content
 
-                                    reference_fix = find_fix_in_dataset(
-                                        revision_id,
-                                        patch_id,
-                                        "data/fixed_comments.json",
-                                    )
+                                reference_fix = find_fix_in_dataset(
+                                    revision_id,
+                                    patch_id,
+                                    "data/fixed_comments.json",
+                                )
 
-                                    metrics = compare_fixes(
-                                        revision_id,
-                                        patch_id,
-                                        generated_fix,
-                                        reference_fix,
-                                    )
+                                metrics = compare_fixes(
+                                    revision_id,
+                                    patch_id,
+                                    generated_fix,
+                                    reference_fix,
+                                )
 
-                                    comment_length = len(comment.content)
-                                    generated_code_length = len(generated_fix)
-                                    file_path = filename
+                                comment_length = len(comment.content)
+                                generated_code_length = len(generated_fix)
+                                file_path = filename
 
-                                    feedback_prompt = f"""
-                                    Comment: {comment.content}
-                                    Diff (before fix): {relevant_diff}
-                                    Generated Fix: {generated_fix}
+                                feedback_prompt = f"""
+                                Comment: {comment.content}
+                                Diff (before fix): {relevant_diff}
+                                Generated Fix: {generated_fix}
 
-                                    Does the generated fix address the comment correctly? Answer YES or NO, followed by a very short and succinct explanation. It is considered a valid fix if the generated fix CONTAINS a fix for the comment despite having extra unnecessary fluff addressing other stuff.
-                                    """
-                                    stream2 = client.chat.completions.create(
-                                        model="gpt-4o",
-                                        messages=[
-                                            {"role": "user", "content": feedback_prompt}
-                                        ],
-                                        stream=True,
-                                        temperature=0,
-                                        top_p=0,
-                                    )
+                                Does the generated fix address the comment correctly? Answer YES or NO, followed by a very short and succinct explanation. It is considered a valid fix if the generated fix CONTAINS a fix for the comment despite having extra unnecessary fluff addressing other stuff.
+                                """
+                                stream2 = client.chat.completions.create(
+                                    model="gpt-4o",
+                                    messages=[
+                                        {"role": "user", "content": feedback_prompt}
+                                    ],
+                                    stream=True,
+                                    temperature=0,
+                                    top_p=0,
+                                )
 
-                                    qualitative_feedback = ""
-                                    for chunk in stream2:
-                                        if chunk.choices[0].delta.content is not None:
-                                            qualitative_feedback += chunk.choices[
-                                                0
-                                            ].delta.content
+                                qualitative_feedback = ""
+                                for chunk in stream2:
+                                    if chunk.choices[0].delta.content is not None:
+                                        qualitative_feedback += chunk.choices[
+                                            0
+                                        ].delta.content
 
+                                if metrics is not None:
                                     writer.writerow(
                                         [
                                             revision_id,
@@ -506,12 +535,7 @@ def generate_fixes(
                                         ]
                                     )
 
-                                    counter += 1
-
-                                except Exception as e:
-                                    logger.error(
-                                        f"Error processing Comment ID {comment.id} with {prompt_type} and limit {diff_length_limit}: {e}"
-                                    )
+                                counter += 1
 
                     else:
                         print(f"No relevant diff found for Comment ID {comment.id}.\n")
@@ -568,6 +592,7 @@ def compare_fixes(revision_id, initial_patch_id, generated_fix, reference_fix):
         print(
             f"No matching fix found in the dataset for Revision {revision_id} and Patch {initial_patch_id}."
         )
+        return None
 
 
 def main():
@@ -584,10 +609,10 @@ def main():
 
     prompt_types = ["chain-of-thought", "zero-shot", "single-shot", "study"]
     diff_length_limits = [100, 1000, 10000]
-    hunk_sizes = [0, 10, 30, 50]
+    hunk_sizes = [0, 10, 50, 100]
     output_csv = "metrics_results.csv"
     generation_limit = (
-        len(prompt_types) * len(diff_length_limits) * len(hunk_sizes) + 20
+        len(prompt_types) * len(diff_length_limits) * len(hunk_sizes) + 1000
     )
 
     generate_fixes(
