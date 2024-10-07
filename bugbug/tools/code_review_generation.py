@@ -3,6 +3,7 @@ import json
 import logging
 import re
 
+import anthropic
 import openai
 import requests
 from langchain_openai import OpenAIEmbeddings
@@ -683,7 +684,9 @@ def main():
         db.db.setup()
         db.upload_dataset("data/fixed_comments.json")
 
-    client = openai.OpenAI(api_key=get_secret("OPENAI_API_KEY"))
+    openai_client = openai.OpenAI(api_key=get_secret("OPENAI_API_KEY"))
+    anthropic_client = anthropic.Anthropic(api_key=get_secret("ANTHROPIC_API_KEY"))
+    print(anthropic_client)
 
     prompt_types = [
         "zero-shot",
@@ -700,7 +703,7 @@ def main():
     )
 
     generate_fixes(
-        client=client,
+        client=openai_client,
         db=db,
         generation_limit=generation_limit,
         prompt_types=prompt_types,
