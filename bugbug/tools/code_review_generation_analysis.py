@@ -3,11 +3,23 @@ import pandas as pd
 import seaborn as sns
 
 df = pd.read_csv("metrics_results.csv")
-
 df.fillna(0, inplace=True)
 
 df["Qualitative Feedback Binary"] = df["Qualitative Feedback"].apply(
     lambda x: 1 if x.startswith("YES") else 0
+)
+
+
+df = df.sort_values(by="Qualitative Feedback Binary", ascending=False).drop_duplicates(
+    subset=[
+        "Revision ID",
+        "Patch ID",
+        "Prompt Type",
+        "Length Limit",
+        "Hunk Size",
+        "Comment",
+    ],
+    keep="first",
 )
 
 df["Prompt Type"] = df["Prompt Type"].astype("category")

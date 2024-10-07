@@ -59,11 +59,12 @@ class FixCommentDB:
                 points.append(vector_point)
             self.db.insert(points)
 
-    def search_similar_comment(
-        self, comment_content: str, revision_id: int, diff_length_limit: int
+    def search_similar_comments(
+        self, comment_content: str, revision_id: int, diff_length_limit: int, top_n: int
     ):
         query_embedding = self.embeddings.embed_query(comment_content)
         results = self.db.search(query_embedding)
+        similar_comments = []
 
         for result in results:
             if (
@@ -71,9 +72,14 @@ class FixCommentDB:
                 and len(result.payload["fix_info"]["fix_patch_diff"])
                 < diff_length_limit
             ):
-                return result.payload["comment"], result.payload["fix_info"]
+                similar_comments.append(
+                    (result.payload["comment"], result.payload["fix_info"])
+                )
 
-        return None, None
+                if len(similar_comments) >= top_n:
+                    break
+
+        return similar_comments if similar_comments else None
 
 
 def fetch_patch_diff(patch_id):
@@ -203,8 +209,7 @@ def generate_prompt(
     relevant_diff,
     start_line,
     end_line,
-    similar_comment,
-    fix_info,
+    similar_comments_and_fix_infos,
     prompt_type,
     hunk_size,
 ):
@@ -234,6 +239,8 @@ def generate_prompt(
         FIX:
         """
     if prompt_type == "single-shot":
+        similar_comment, fix_info = similar_comments_and_fix_infos[0]
+
         example_initial_diff = fetch_diff(
             fix_info["revision_id"], fix_info["initial_patch_id"]
         )
@@ -318,7 +325,9 @@ def generate_prompt(
         {comment_content}
 
         Diff Hunk:
+        ```
         {relevant_diff}
+        ```
         """
     if prompt_type == "chain-of-thought":
         prompt = f"""
@@ -343,6 +352,74 @@ def generate_prompt(
            being removed (-) and then the corrected line as being added (+). ONLY address the comment.
            Do not make any other changes.
 
+        COMMENT:
+        "{comment_content}"
+
+        LINE NUMBERS:
+        {start_line}-{end_line}
+
+        DIFF:
+        ```
+        {relevant_diff}
+        ```
+
+        FIX:
+        """
+
+    if prompt_type == "multi-shot":
+        examples = ""
+        for similar_comment, fix_info in similar_comments_and_fix_infos:
+            example_initial_diff = fetch_diff(
+                fix_info["revision_id"], fix_info["initial_patch_id"]
+            )
+            example_relevant_initial_diff = extract_relevant_diff(
+                example_initial_diff,
+                fix_info["comment"]["filename"],
+                fix_info["comment"]["start_line"],
+                fix_info["comment"]["end_line"],
+                hunk_size,
+            )
+            example_relevant_fix_diff = extract_relevant_diff(
+                fix_info["fix_patch_diff"],
+                fix_info["comment"]["filename"],
+                fix_info["comment"]["start_line"],
+                fix_info["comment"]["end_line"],
+                hunk_size,
+            )
+            examples += f"""
+            EXAMPLE:
+            COMMENT:
+            "{similar_comment}"
+
+            LINE NUMBERS:
+            {fix_info["comment"]["start_line"]}-{fix_info["comment"]["end_line"]}
+
+            DIFF:
+            ```
+            {example_relevant_initial_diff}
+            ```
+
+
+            FIX:
+            {example_relevant_fix_diff}
+            """
+
+        prompt = f"""
+        CONTEXT:
+        You are a code review bot that generates fixes in code given an inline review comment.
+        You will be provided with the COMMENT, the LINE NUMBERS the comment is referring to,
+        and the relevant DIFF for the file affected. Your goal is to generate a code fix based
+        on the COMMENT, LINE NUMBERS, and DIFF provided, and nothing more. Generate ONLY the
+        lines you are adding/deleting, indicated by + and -. For example, if you are modifying
+        a single line, show that you are deleting (-) the line from the original diff and adding
+        (+) the fixed line. The line numbers help to contextualize the changes within the diff.
+        Two EXAMPLES has been provided for your reference. ONLY address the comment. Do not make
+        any other changes.
+
+        EXAMPLES:
+        {examples}
+
+        YOUR TURN:
         COMMENT:
         "{comment_content}"
 
@@ -436,14 +513,16 @@ def generate_fixes(
                                 if counter >= generation_limit:
                                     break
 
-                                (
-                                    similar_comment,
-                                    fix_info,
-                                ) = db.search_similar_comment(
-                                    comment.content, revision_id, diff_length_limit
+                                similar_comments_and_fix_infos = (
+                                    db.search_similar_comments(
+                                        comment.content,
+                                        revision_id,
+                                        diff_length_limit,
+                                        2,
+                                    )
                                 )
 
-                                if similar_comment is None or fix_info is None:
+                                if similar_comments_and_fix_infos is None:
                                     logger.info(
                                         f"No similar comment found for comment: {comment.content}"
                                     )
@@ -454,8 +533,7 @@ def generate_fixes(
                                     relevant_diff,
                                     comment.start_line,
                                     comment.end_line,
-                                    similar_comment,
-                                    fix_info,
+                                    similar_comments_and_fix_infos,
                                     prompt_type,
                                     hunk_size,
                                 )
@@ -607,12 +685,18 @@ def main():
 
     client = openai.OpenAI(api_key=get_secret("OPENAI_API_KEY"))
 
-    prompt_types = ["chain-of-thought", "zero-shot", "single-shot", "study"]
-    diff_length_limits = [100, 1000, 10000]
-    hunk_sizes = [0, 10, 50, 100]
+    prompt_types = [
+        "zero-shot",
+        "single-shot",
+        "multi-shot",
+        "chain-of-thought",
+        "study",
+    ]
+    diff_length_limits = [1000, 10000]
+    hunk_sizes = [100, 250, 1000]
     output_csv = "metrics_results.csv"
     generation_limit = (
-        len(prompt_types) * len(diff_length_limits) * len(hunk_sizes) + 1000
+        len(prompt_types) * len(diff_length_limits) * len(hunk_sizes) + 200
     )
 
     generate_fixes(
