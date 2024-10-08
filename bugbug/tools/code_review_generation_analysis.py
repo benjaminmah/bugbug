@@ -2,13 +2,14 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-df = pd.read_csv("metrics_results.csv")
+df = pd.read_csv("metrics_results_long.csv")
 df.fillna(0, inplace=True)
 
 df["Qualitative Feedback Binary"] = df["Qualitative Feedback"].apply(
     lambda x: 1 if x.startswith("YES") else 0
 )
 
+df["Comment Length"] = df["Comment"].apply(len)
 
 df = df.sort_values(by="Qualitative Feedback Binary", ascending=False).drop_duplicates(
     subset=[
@@ -38,6 +39,8 @@ df_positive_feedback = df[df["Qualitative Feedback Binary"] == 1]
 best_combinations = df_positive_feedback.sort_values(
     by="Composite Score", ascending=False
 )
+
+pd.set_option("display.max_columns", None)
 
 print("Top 5 Best Combinations:")
 print(
@@ -102,4 +105,11 @@ correlation_matrix = df[
 plt.figure(figsize=(8, 6))
 sns.heatmap(correlation_matrix, annot=True, cmap="coolwarm", vmin=-1, vmax=1)
 plt.title("Correlation Matrix of Metrics and Qualitative Feedback")
+plt.show()
+
+plt.figure(figsize=(8, 6))
+sns.boxplot(x="Qualitative Feedback Binary", y="Comment Length", data=df)
+plt.title("Comment Length vs Qualitative Feedback (YES/NO)")
+plt.xlabel("Qualitative Feedback Binary (0 = NO, 1 = YES)")
+plt.ylabel("Comment Length")
 plt.show()

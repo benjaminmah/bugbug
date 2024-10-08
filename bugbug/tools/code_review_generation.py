@@ -474,7 +474,9 @@ def generate_fixes(
             ]
         )
 
-        for patch_id, comments in review_data.get_all_inline_comments(lambda c: True):
+        for i, (patch_id, comments) in enumerate(
+            review_data.get_all_inline_comments(lambda c: True)
+        ):
             revision_id = get_revision_id_from_patch(patch_id)
 
             if not revision_id:
@@ -746,18 +748,18 @@ def main():
     hunk_sizes = [100, 250, 1000]
     output_csv = "metrics_results.csv"
     generation_limit = (
-        len(prompt_types) * len(diff_length_limits) * len(hunk_sizes) + 50
+        len(prompt_types) * len(diff_length_limits) * len(hunk_sizes) + 200
     )
 
     generate_fixes(
-        client=anthropic_client,
+        client=openai_client,
         db=db,
         generation_limit=generation_limit,
         prompt_types=prompt_types,
         hunk_sizes=hunk_sizes,
         diff_length_limits=diff_length_limits,
         output_csv=output_csv,
-        model="claude-3-5-sonnet",
+        model="gpt-4o",
     )
 
 
