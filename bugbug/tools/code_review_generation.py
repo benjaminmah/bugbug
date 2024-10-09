@@ -100,6 +100,8 @@ def extract_relevant_diff(patch_diff, filename, start_line, end_line, hunk_size)
     if match:
         hunk_header_pattern = r"@@ -(\d+),(\d+) \+(\d+),(\d+) @@"
         match2 = re.finditer(hunk_header_pattern, match.group(0))
+        first_index = None
+        last_index = None
 
         for m in match2:
             diff_lines = match.group(0).split("\n")
@@ -490,15 +492,7 @@ def generate_fixes(
         for i, (patch_id, comments) in enumerate(
             review_data.get_all_inline_comments(lambda c: True)
         ):
-            # TEMPORARY
-            if patch_id != 33035:
-                continue
-
             revision_id = get_revision_id_from_patch(patch_id)
-
-            # TEMPORARY
-            if revision_id != 11194:
-                continue
 
             if not revision_id:
                 logger.error(f"Skipping Patch ID {patch_id} as no revision ID found.")
@@ -517,13 +511,6 @@ def generate_fixes(
                 continue
 
             for comment in comments:
-                # TEMPORARY
-                if (
-                    comment.content
-                    != "It would be better  to keep this comment, though it might make sense to move parts of it next to the relevant conditionals."
-                ):
-                    continue
-
                 if counter >= generation_limit:
                     return
 
@@ -769,13 +756,17 @@ def main():
     print(anthropic_client)
 
     prompt_types = [
+        "zero-shot",
+        "single-shot",
+        "multi-shot",
         "chain-of-thought",
+        "study",
     ]
-    diff_length_limits = [1000]
-    hunk_sizes = [100]
+    diff_length_limits = [1000, 10000]
+    hunk_sizes = [20, 50, 100]
     output_csv = "metrics_results.csv"
     generation_limit = (
-        1  # len(prompt_types) * len(diff_length_limits) * len(hunk_sizes) + 200
+        len(prompt_types) * len(diff_length_limits) * len(hunk_sizes) + 400
     )
 
     generate_fixes(
