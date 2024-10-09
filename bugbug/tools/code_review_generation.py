@@ -343,6 +343,32 @@ def generate_prompt(
         {relevant_diff}
         ```
         """
+    if prompt_type == "study-modified":
+        prompt = f"""
+        You are a software developer who has to change the code below by following a given Code Review.
+        The Code Review is attached to the line of code starting with the line number Start_Line and
+        ending with the line number End_Line. There are also characters (- and +) showing where a line
+        of code in the diff hunk has been removed (marked with a - at the beginning of the line) or added
+        (marked with a + at the beginning of the line). The New Code Diff should be in the correct Git diff
+        format, where added lines (on top of the diff hunk) are denoted with the + character. Lines removed
+        from the Diff Hunk should be denoted with the - character. Your output must not contain any trailing
+        tokens/characters. Your output must adhere to the following format: "Short Explanation: [...] \n
+        New Code Diff: [...]"
+
+        Start_Line:
+        {start_line}
+
+        End_Line:
+        {end_line}
+
+        Code Review:
+        {comment_content}
+
+        Diff Hunk:
+        ```
+        {relevant_diff}
+        ```
+        """
     if prompt_type == "chain-of-thought":
         prompt = f"""
         CONTEXT:
@@ -756,7 +782,7 @@ def main():
     print(anthropic_client)
 
     prompt_types = [
-        "study",
+        "study-modified",
     ]
     diff_length_limits = [1000]
     hunk_sizes = [20]
