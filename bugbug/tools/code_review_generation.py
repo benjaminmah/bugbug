@@ -756,14 +756,10 @@ def main():
     print(anthropic_client)
 
     prompt_types = [
-        "zero-shot",
-        "single-shot",
-        "multi-shot",
-        "chain-of-thought",
         "study",
     ]
-    diff_length_limits = [1000, 10000]
-    hunk_sizes = [20, 50, 100]
+    diff_length_limits = [1000]
+    hunk_sizes = [20]
     output_csv = "metrics_results.csv"
     generation_limit = (
         len(prompt_types) * len(diff_length_limits) * len(hunk_sizes) + 400

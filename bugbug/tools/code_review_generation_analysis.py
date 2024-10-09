@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-df = pd.read_csv("metrics_results_long.csv")
+df = pd.read_csv("metrics_results.csv")
 df.fillna(0, inplace=True)
 
 df["Qualitative Feedback Binary"] = df["Qualitative Feedback"].apply(
@@ -35,36 +35,41 @@ df["Composite Score"] = (
 )
 
 df_positive_feedback = df[df["Qualitative Feedback Binary"] == 1]
-
 best_combinations = df_positive_feedback.sort_values(
     by="Composite Score", ascending=False
 )
 
-pd.set_option("display.max_columns", None)
+df_positive_feedback = df[df["Qualitative Feedback Binary"] == 1]
 
-print("Top 5 Best Combinations:")
-print(
-    best_combinations[
-        [
-            "Prompt Type",
-            "Length Limit",
-            "Hunk Size",
-            "Precision",
-            "Recall",
-            "F1",
-            "Composite Score",
-        ]
-    ].head()
-)
+# df_without_study = df[df["Prompt Type"] != "study"]
+
+average_scores = df.groupby(["Prompt Type", "Length Limit", "Hunk Size"])[
+    "Composite Score"
+].mean()
+
+average_scores = average_scores.reset_index()
+
+best_combinations_overall = average_scores.sort_values(
+    by="Composite Score", ascending=False
+).head(5)
+
+print("Top 5 combinations (without study prompt):\n")
+print(best_combinations_overall)
 
 plt.figure(figsize=(8, 6))
 sns.barplot(x="Prompt Type", y="Composite Score", data=best_combinations)
 plt.title("Composite Score by Prompt Type (Positive Feedback)")
 plt.xticks(rotation=45)
+
+plot_counter = 1
+plt.savefig(f"/Users/bmah/Documents/plot_{plot_counter}.png")
+plot_counter += 1
+
 plt.show()
 
 
 def plot_metrics_vs_variable(df, variable):
+    global plot_counter
     metrics = ["Precision", "Recall", "F1"]
 
     plt.figure(figsize=(18, 6))
@@ -75,6 +80,8 @@ def plot_metrics_vs_variable(df, variable):
         plt.xticks(rotation=45)
 
     plt.tight_layout()
+    plt.savefig(f"/Users/bmah/Documents/plot_{plot_counter}.png")
+    plot_counter += 1
     plt.show()
 
 
@@ -83,6 +90,7 @@ for var in ["Prompt Type", "Length Limit", "Hunk Size"]:
 
 
 def plot_qualitative_feedback_vs_variable(df, variable):
+    global plot_counter
     feedback_counts = (
         df.groupby([variable, "Qualitative Feedback Binary"]).size().unstack().fillna(0)
     )
@@ -92,6 +100,8 @@ def plot_qualitative_feedback_vs_variable(df, variable):
     plt.ylabel("Count")
     plt.xticks(rotation=45)
     plt.legend(title="Qualitative Feedback", labels=["NO", "YES"])
+    plt.savefig(f"/Users/bmah/Documents/plot_{plot_counter}.png")
+    plot_counter += 1
     plt.show()
 
 
@@ -105,6 +115,8 @@ correlation_matrix = df[
 plt.figure(figsize=(8, 6))
 sns.heatmap(correlation_matrix, annot=True, cmap="coolwarm", vmin=-1, vmax=1)
 plt.title("Correlation Matrix of Metrics and Qualitative Feedback")
+plt.savefig(f"/Users/bmah/Documents/plot_{plot_counter}.png")
+plot_counter += 1
 plt.show()
 
 plt.figure(figsize=(8, 6))
@@ -112,4 +124,6 @@ sns.boxplot(x="Qualitative Feedback Binary", y="Comment Length", data=df)
 plt.title("Comment Length vs Qualitative Feedback (YES/NO)")
 plt.xlabel("Qualitative Feedback Binary (0 = NO, 1 = YES)")
 plt.ylabel("Comment Length")
+plt.savefig(f"/Users/bmah/Documents/plot_{plot_counter}.png")
+plot_counter += 1
 plt.show()
