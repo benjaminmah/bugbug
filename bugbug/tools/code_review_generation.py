@@ -98,19 +98,29 @@ def extract_relevant_diff(patch_diff, filename, start_line, end_line, hunk_size)
     match = re.search(file_diff_pattern, patch_diff, re.DOTALL)
 
     if match:
-        hunk_header_pattern = r"@@ -(\d+),\d+ \+(\d+),\d+ @@"
-        match2 = re.search(hunk_header_pattern, match.group(0))
+        hunk_header_pattern = r"@@ -(\d+),(\d+) \+(\d+),(\d+) @@"
+        match2 = re.finditer(hunk_header_pattern, match.group(0))
 
-        if match2:
+        for m in match2:
             diff_lines = match.group(0).split("\n")
 
-            deletion_start_line = int(match2.group(1))
-            addition_start_line = int(match2.group(2))
+            deletion_start_line = int(m.group(1))
+            deletion_num_lines = int(m.group(2))
+            addition_start_line = int(m.group(3))
+            addition_num_lines = int(m.group(4))
+
+            if (
+                start_line < deletion_start_line and start_line < addition_start_line
+            ) or (
+                start_line > (deletion_start_line + deletion_num_lines)
+                and start_line > (addition_start_line + addition_num_lines)
+            ):
+                continue
 
             added_lines = []
             deleted_lines = []
 
-            for line in diff_lines[diff_lines.index(match2.group()) + 1 :]:
+            for line in diff_lines[diff_lines.index(m.group()) + 1 :]:
                 if line.startswith("-"):
                     deleted_lines.append(line)
                 elif line.startswith("+"):
@@ -469,6 +479,9 @@ def generate_fixes(
                 "Qualitative Feedback",
                 "File Path",
                 "Comment",
+                "Start Line",
+                "End Line",
+                "Relevant Diff",
                 "Generated Fix",
                 "Actual Fix",
             ]
@@ -477,7 +490,15 @@ def generate_fixes(
         for i, (patch_id, comments) in enumerate(
             review_data.get_all_inline_comments(lambda c: True)
         ):
+            # TEMPORARY
+            if patch_id != 33035:
+                continue
+
             revision_id = get_revision_id_from_patch(patch_id)
+
+            # TEMPORARY
+            if revision_id != 11194:
+                continue
 
             if not revision_id:
                 logger.error(f"Skipping Patch ID {patch_id} as no revision ID found.")
@@ -496,6 +517,13 @@ def generate_fixes(
                 continue
 
             for comment in comments:
+                # TEMPORARY
+                if (
+                    comment.content
+                    != "It would be better  to keep this comment, though it might make sense to move parts of it next to the relevant conditionals."
+                ):
+                    continue
+
                 if counter >= generation_limit:
                     return
 
@@ -656,6 +684,9 @@ def generate_fixes(
                                             qualitative_feedback,
                                             file_path,
                                             comment.content,
+                                            comment.start_line,
+                                            comment.end_line,
+                                            relevant_diff,
                                             generated_fix,
                                             reference_fix,
                                         ]
@@ -738,17 +769,13 @@ def main():
     print(anthropic_client)
 
     prompt_types = [
-        "zero-shot",
-        "single-shot",
-        "multi-shot",
         "chain-of-thought",
-        "study",
     ]
-    diff_length_limits = [1000, 10000]
-    hunk_sizes = [100, 250, 1000]
+    diff_length_limits = [1000]
+    hunk_sizes = [100]
     output_csv = "metrics_results.csv"
     generation_limit = (
-        len(prompt_types) * len(diff_length_limits) * len(hunk_sizes) + 200
+        1  # len(prompt_types) * len(diff_length_limits) * len(hunk_sizes) + 200
     )
 
     generate_fixes(
