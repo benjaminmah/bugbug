@@ -432,56 +432,74 @@ def get_interval_lines(patch, file, begin, end, final_diff):
     return False
 
 
+def get_revision_by_id(revision_id):
+    revision = phab.request(
+        "differential.revision.search", constraints={"ids": [revision_id]}
+    )
+
+    if revision["data"]:
+        return revision["data"][0]
+    else:
+        raise Exception(f"No revision found for ID {revision_id}")
+
+
+def get_revision_transactions(revision_phid):
+    transactions = phab.request("transaction.search", objectIdentifier=revision_phid)
+    return transactions["data"]
+
+
 def run_analysis(target_file):
     revisions = get_target_revisions()
 
-    for revision in phabricator.get_revisions():
-        if revision["id"] in revisions.keys():
-            try:
-                accepted_diff = phab.load_raw_diff(
-                    phab.load_revision(revision["phid"])["fields"]["diffID"]
-                )
-                (
-                    revised_lines_status,
-                    revised_hunks_status,
-                ) = check_status_revised_line_and_hunks(
-                    revision["transactions"],
-                    revisions.get(revision["id"])["inline_comment_ids"],
-                    accepted_diff,
-                )
+    for revision_id in revisions.keys():
+        revision = get_revision_by_id(revision_id)
+        transactions = get_revision_transactions(revision["phid"])
 
-                revision_replies, hunk_replies = check_for_replies_on_target_comments(
-                    revision["transactions"],
-                    revisions.get(revision["id"])["inline_comment_ids"],
-                    revisions.get(revision["id"])["suggestion_ids"],
-                )
+        accepted_diff = phab.load_raw_diff(
+            phab.load_revision(revision["phid"])["fields"]["diffID"]
+        )
+        (
+            revised_lines_status,
+            revised_hunks_status,
+        ) = check_status_revised_line_and_hunks(
+            transactions,
+            get_target_revisions().get(revision["id"])["inline_comment_ids"],
+            accepted_diff,
+        )
 
-                same_line_comments = check_for_comments_in_hunk(
-                    transactions=revision["transactions"],
-                    comment_ids=revisions.get(revision["id"])["inline_comment_ids"],
-                    hunk_range=0,
-                )
+        revision_replies, hunk_replies = check_for_replies_on_target_comments(
+            transactions,
+            get_target_revisions().get(revision["id"])["inline_comment_ids"],
+            get_target_revisions().get(revision["id"])["suggestion_ids"],
+        )
 
-                hunk_comments = check_for_comments_in_hunk(
-                    transactions=revision["transactions"],
-                    comment_ids=revisions.get(revision["id"])["inline_comment_ids"],
-                    hunk_range=10,
-                )
+        same_line_comments = check_for_comments_in_hunk(
+            transactions=transactions,
+            comment_ids=get_target_revisions().get(revision["id"])[
+                "inline_comment_ids"
+            ],
+            hunk_range=0,
+        )
 
-                generate_report(
-                    target_file,
-                    revision_replies,
-                    hunk_replies,
-                    revised_lines_status,
-                    revised_hunks_status,
-                    same_line_comments,
-                    hunk_comments,
-                    revision["id"],
-                    revision["fields"]["status"]["value"],
-                )
+        hunk_comments = check_for_comments_in_hunk(
+            transactions=transactions,
+            comment_ids=get_target_revisions().get(revision["id"])[
+                "inline_comment_ids"
+            ],
+            hunk_range=10,
+        )
 
-            except Exception as e:
-                print(e)
+        generate_report(
+            target_file,
+            revision_replies,
+            hunk_replies,
+            revised_lines_status,
+            revised_hunks_status,
+            same_line_comments,
+            hunk_comments,
+            revision["id"],
+            revision["fields"]["status"]["value"],
+        )
 
 
 if __name__ == "__main__":
