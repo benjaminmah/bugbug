@@ -30,8 +30,6 @@ def run(args) -> None:
     llm_tool = CodeGeneratorTool(llm=llm, db=db)
 
     if args.revision_id and args.diff_id and args.comment_id:
-        pass
-        # TODO: Create this function
         generate_individual_fix(
             llm_tool=llm_tool,
             db=db,
@@ -48,6 +46,7 @@ def run(args) -> None:
             hunk_sizes=args.hunk_sizes,
             diff_length_limits=args.diff_length_limits,
             output_csv=args.output_csv,
+            single_comment=args.single_comment,
         )
 
 
@@ -95,6 +94,11 @@ def parse_args(args):
         type=int,
         default=100,
         help="Maximum number of generations.",
+    )
+    parser.add_argument(
+        "--single-comment",
+        action="store_true",
+        help="If set, only revisions with a single inline comment will be evaluated.",
     )
     parser.add_argument(
         "--revision-id",
