@@ -66,7 +66,7 @@ def parse_args(args):
     parser.add_argument(
         "--output-csv",
         type=str,
-        default="metrics_results.csv",
+        default="code_generations.csv",
         help="Output CSV file for results.",
     )
     parser.add_argument(
