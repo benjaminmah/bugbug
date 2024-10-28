@@ -2,7 +2,6 @@ import csv
 import json
 import logging
 import re
-from collections import defaultdict
 from types import SimpleNamespace
 
 from langchain_openai import OpenAIEmbeddings
@@ -522,15 +521,15 @@ def generate_fixes(
             ]
         )
 
-        if single_comment:
-            num_comments_per_revision = defaultdict(int)
+        # if single_comment:
+        #     num_comments_per_revision = defaultdict(int)
 
-            for i, (patch_id, comments) in enumerate(
-                review_data.get_all_inline_comments(lambda c: True)
-            ):
-                revision_id = get_revision_id_from_patch(patch_id)
-                if revision_id:
-                    num_comments_per_revision[revision_id] += len(comments)
+        #     for i, (patch_id, comments) in enumerate(
+        #         review_data.get_all_inline_comments(lambda c: True)
+        #     ):
+        #         revision_id = get_revision_id_from_patch(patch_id)
+        #         if revision_id:
+        #             num_comments_per_revision[revision_id] += len(comments)
 
         for i, (patch_id, comments) in enumerate(
             review_data.get_all_inline_comments(lambda c: True)
@@ -538,8 +537,8 @@ def generate_fixes(
             revision_id = get_revision_id_from_patch(patch_id)
 
             if single_comment:
-                if num_comments_per_revision[revision_id] > 1:
-                    logger.info("This revision has more than one comment. Skipping.")
+                if len(comments) > 1:
+                    logger.error("This patch has more than one comment. Skipping.")
                     continue
 
             if not revision_id:
