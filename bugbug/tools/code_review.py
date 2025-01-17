@@ -554,9 +554,9 @@ class PhabricatorReviewData(ReviewData):
                 if transaction["type"] != "inline":
                     continue
 
-                # Ignore replies
-                if transaction["fields"]["replyToCommentPHID"] is not None:
-                    continue
+                # # Ignore replies
+                # if transaction["fields"]["replyToCommentPHID"] is not None:
+                #     continue
 
                 # Ignore bot comments
                 if transaction["authorPHID"] == "PHID-USER-cje4weq32o3xyuegalpj":
