@@ -81,64 +81,173 @@ def extract_relevant_diff(patch_diff, filename):
         return None
 
 
+# def process_comments(limit, diff_length_limit):
+#     patch_count = 0
+#     diff_id_to_revisions_map, diff_phid_to_id = load_revisions_maps()
+
+#     for patch_id, comments in review_data.get_all_inline_comments(lambda c: True):
+#         ## START OF NEW SECTION ##
+#         # Skip patches with more than one comment
+#         if len(comments) != 1:
+#             continue
+#         ## END OF NEW SECTION ##
+
+
+#         revision_info = diff_id_to_revisions_map[patch_id]
+#         transactions = revision_info["transactions"]
+
+#         resolved_comments = [comment for comment in comments if comment.is_done]
+
+#         if not resolved_comments:
+#             continue
+
+#         for comment in comments:
+#             comment_date_modified = comment.date_modified
+#             most_recent_update = find_recent_update(transactions, comment_date_modified)
+#             if not most_recent_update:
+#                 continue
+
+#             try:
+#                 fix_patch_id = diff_phid_to_id[most_recent_update["fields"]["new"]]
+#             except KeyError:
+#                 diffs = api.search_diffs(diff_phid=most_recent_update["fields"]["new"])
+#                 if not diffs:
+#                     raise NoDiffFoundForPHIDException(
+#                         most_recent_update["fields"]["new"]
+#                     )
+#                 fix_patch_id = diffs[0]["id"]
+
+#             # If the most recent patch is the original patch itself, skip it
+#             if fix_patch_id == patch_id:
+#                 continue
+
+#             revision_phid = revision_info["phid"]
+#             revision_id = revision_info["id"]
+#             bug_id = revision_info["fields"]["bugzilla.bug-id"]
+
+#             try:
+#                 previous_patch_id = diff_phid_to_id[most_recent_update["fields"]["old"]]
+#             except Exception:
+#                 diffs = api.search_diffs(diff_phid=most_recent_update["fields"]["old"])
+#                 if not diffs:
+#                     raise NoDiffFoundForPHIDException(
+#                         most_recent_update["fields"]["old"]
+#                     )
+#                 previous_patch_id = diffs[0]["id"]
+
+#             try:
+#                 patch_diff = fetch_diff_from_url(
+#                     revision_id, previous_patch_id, fix_patch_id
+#                 )
+#             except Exception as e:
+#                 logger.error(f"Failed to fetch diff: {e}")
+#                 continue
+
+#             if len(patch_diff) > diff_length_limit:
+#                 continue
+
+#             relevant_diff = extract_relevant_diff(patch_diff, comment.filename)
+
+#             if relevant_diff:
+#                 data = {
+#                     "bug_id": bug_id,
+#                     "revision_id": revision_id,
+#                     "revision_phid": revision_phid,
+#                     "initial_patch_id": patch_id,
+#                     "fix_patch_id": fix_patch_id,
+#                     "previous_patch_id": previous_patch_id,
+#                     "comment": comment.__dict__,
+#                     "fix_patch_diff": relevant_diff,
+#                 }
+#                 yield data
+
+#         patch_count += 1
+#         if patch_count >= limit:
+#             break
+
+
 def process_comments(limit, diff_length_limit):
     patch_count = 0
     diff_id_to_revisions_map, diff_phid_to_id = load_revisions_maps()
 
+    patches_by_revision = {}
     for patch_id, comments in review_data.get_all_inline_comments(lambda c: True):
+        revision_info = diff_id_to_revisions_map.get(patch_id)
+        if not revision_info:
+            continue
+
+        revision_id = revision_info["id"]
+        has_comments = len(comments) > 0
+
+        if revision_id not in patches_by_revision:
+            patches_by_revision[revision_id] = []
+
+        patches_by_revision[revision_id].append((patch_id, has_comments))
+
+    for revision_id in patches_by_revision:
+        patches_by_revision[revision_id].sort(key=lambda x: x[0])
+
+    for patch_id, comments in review_data.get_all_inline_comments(lambda c: True):
+        # Skip patches with more than one comment
+        if len(comments) != 1:
+            continue
+
         revision_info = diff_id_to_revisions_map[patch_id]
+        revision_id = revision_info["id"]
         transactions = revision_info["transactions"]
+
+        # Skip if there are comments on subsequent patches within the same revision
+        if not has_no_comments_after_within_revision(
+            patch_id, revision_id, patches_by_revision
+        ):
+            continue
 
         resolved_comments = [comment for comment in comments if comment.is_done]
 
         if not resolved_comments:
             continue
 
+        # Get the final patch ID from the transactions
+        final_update = max(
+            (
+                transaction
+                for transaction in transactions
+                if transaction["type"] == "update"
+            ),
+            key=lambda t: t["dateModified"],
+            default=None,
+        )
+
+        if not final_update:
+            logger.warning(f"No final update found for patch {patch_id}")
+            continue
+
+        try:
+            final_patch_id = diff_phid_to_id[final_update["fields"]["new"]]
+        except KeyError:
+            diffs = api.search_diffs(diff_phid=final_update["fields"]["new"])
+            if not diffs:
+                raise NoDiffFoundForPHIDException(final_update["fields"]["new"])
+            final_patch_id = diffs[0]["id"]
+
+        # If the final patch is the same as the original patch, skip it
+        if final_patch_id == patch_id:
+            continue
+
+        revision_phid = revision_info["phid"]
+        revision_id = revision_info["id"]
+        bug_id = revision_info["fields"]["bugzilla.bug-id"]
+
+        try:
+            patch_diff = fetch_diff_from_url(revision_id, patch_id, final_patch_id)
+        except Exception as e:
+            logger.error(f"Failed to fetch diff: {e}")
+            continue
+
+        if len(patch_diff) > diff_length_limit:
+            continue
+
         for comment in comments:
-            comment_date_modified = comment.date_modified
-            most_recent_update = find_recent_update(transactions, comment_date_modified)
-            if not most_recent_update:
-                continue
-
-            try:
-                fix_patch_id = diff_phid_to_id[most_recent_update["fields"]["new"]]
-            except KeyError:
-                diffs = api.search_diffs(diff_phid=most_recent_update["fields"]["new"])
-                if not diffs:
-                    raise NoDiffFoundForPHIDException(
-                        most_recent_update["fields"]["new"]
-                    )
-                fix_patch_id = diffs[0]["id"]
-
-            # If the most recent patch is the original patch itself, skip it
-            if fix_patch_id == patch_id:
-                continue
-
-            revision_phid = revision_info["phid"]
-            revision_id = revision_info["id"]
-            bug_id = revision_info["fields"]["bugzilla.bug-id"]
-
-            try:
-                previous_patch_id = diff_phid_to_id[most_recent_update["fields"]["old"]]
-            except Exception:
-                diffs = api.search_diffs(diff_phid=most_recent_update["fields"]["old"])
-                if not diffs:
-                    raise NoDiffFoundForPHIDException(
-                        most_recent_update["fields"]["old"]
-                    )
-                previous_patch_id = diffs[0]["id"]
-
-            try:
-                patch_diff = fetch_diff_from_url(
-                    revision_id, previous_patch_id, fix_patch_id
-                )
-            except Exception as e:
-                logger.error(f"Failed to fetch diff: {e}")
-                continue
-
-            if len(patch_diff) > diff_length_limit:
-                continue
-
             relevant_diff = extract_relevant_diff(patch_diff, comment.filename)
 
             if relevant_diff:
@@ -147,8 +256,7 @@ def process_comments(limit, diff_length_limit):
                     "revision_id": revision_id,
                     "revision_phid": revision_phid,
                     "initial_patch_id": patch_id,
-                    "fix_patch_id": fix_patch_id,
-                    "previous_patch_id": previous_patch_id,
+                    "final_patch_id": final_patch_id,
                     "comment": comment.__dict__,
                     "fix_patch_diff": relevant_diff,
                 }
@@ -157,6 +265,22 @@ def process_comments(limit, diff_length_limit):
         patch_count += 1
         if patch_count >= limit:
             break
+
+
+def has_no_comments_after_within_revision(patch_id, revision_id, patches_by_revision):
+    if revision_id not in patches_by_revision:
+        raise KeyError(f"Revision ID {revision_id} not found in patches_by_revision")
+
+    sorted_patches = patches_by_revision[revision_id]
+
+    for i, (current_patch_id, has_comments) in enumerate(sorted_patches):
+        if current_patch_id == patch_id:
+            for _, next_has_comments in sorted_patches[i + 1 :]:
+                if next_has_comments:
+                    return False
+            return True
+
+    raise KeyError(f"Patch ID {patch_id} not found in revision {revision_id}")
 
 
 def main():
