@@ -7,7 +7,7 @@ import orjson
 from libmozdata.phabricator import PhabricatorAPI
 
 from bugbug import db, phabricator
-from bugbug.phabricator import fetch_diff_from_url
+from bugbug.phabricator import fetch_interdiff
 from bugbug.tools.code_review import PhabricatorReviewData
 from bugbug.utils import (
     get_secret,
@@ -196,6 +196,14 @@ def process_comments(limit, diff_length_limit):
         revision_id = revision_info["id"]
         transactions = revision_info["transactions"]
 
+        updates_after_current = [
+            transaction
+            for transaction in transactions
+            if transaction["type"] == "update" and transaction["id"] > patch_id
+        ]
+        if len(updates_after_current) > 2:
+            continue
+
         # Skip if there are comments on subsequent patches within the same revision
         if not has_no_comments_after_within_revision(
             patch_id, revision_id, patches_by_revision
@@ -239,7 +247,7 @@ def process_comments(limit, diff_length_limit):
         bug_id = revision_info["fields"]["bugzilla.bug-id"]
 
         try:
-            patch_diff = fetch_diff_from_url(revision_id, patch_id, final_patch_id)
+            patch_diff = fetch_interdiff(revision_id, patch_id, final_patch_id)
         except Exception as e:
             logger.error(f"Failed to fetch diff: {e}")
             continue
@@ -247,20 +255,24 @@ def process_comments(limit, diff_length_limit):
         if len(patch_diff) > diff_length_limit:
             continue
 
-        for comment in comments:
-            relevant_diff = extract_relevant_diff(patch_diff, comment.filename)
+        if len(patch_diff) == 0:
+            continue
 
-            if relevant_diff:
-                data = {
-                    "bug_id": bug_id,
-                    "revision_id": revision_id,
-                    "revision_phid": revision_phid,
-                    "initial_patch_id": patch_id,
-                    "final_patch_id": final_patch_id,
-                    "comment": comment.__dict__,
-                    "fix_patch_diff": relevant_diff,
-                }
-                yield data
+        for comment in comments:
+            # relevant_diff = extract_relevant_diff(patch_diff, comment.filename)
+
+            # if relevant_diff:
+            data = {
+                "bug_id": bug_id,
+                "revision_id": revision_id,
+                "revision_phid": revision_phid,
+                "initial_patch_id": patch_id,
+                "final_patch_id": final_patch_id,
+                "comment": comment.__dict__,
+                "fix_patch_diff": patch_diff,
+                # "fix_patch_diff": relevant_diff,
+            }
+            yield data
 
         patch_count += 1
         if patch_count >= limit:
@@ -294,7 +306,7 @@ def main():
     parser.add_argument(
         "--diff-length-limit",
         type=int,
-        default=10000,
+        default=1000,
         help="Limit the maximum allowed diff length. Default 10000 if not specified.",
     )
 

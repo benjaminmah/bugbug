@@ -4,6 +4,9 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import logging
+import os
+import subprocess
+import tempfile
 from datetime import datetime, timedelta
 from typing import Collection, Iterator, NewType
 
@@ -30,7 +33,7 @@ db.register(
     4,
 )
 
-FIXED_COMMENTS_DB = "data/fixed_comments.json"
+FIXED_COMMENTS_DB = "data/fixed_comments4.json"
 db.register(
     FIXED_COMMENTS_DB,
     "https://community-tc.services.mozilla.com/api/index/v1/task/project.bugbug.fixed_comments.latest/artifacts/public/fixed_comments.json.zst",
@@ -308,3 +311,51 @@ def fetch_diff_from_url(
     response.raise_for_status()
 
     return response.text
+
+
+def fetch_interdiff(revision_id, first_patch, second_patch):
+    try:
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=".patch"
+        ) as diff1_file, tempfile.NamedTemporaryFile(
+            delete=False, suffix=".patch"
+        ) as diff2_file:
+            first_patch_url = f"https://phabricator.services.mozilla.com/D{revision_id}?id={first_patch}&download=true"
+            response1 = requests.get(first_patch_url)
+            if response1.status_code != 200:
+                raise Exception(
+                    f"Failed to download first patch: {first_patch}, status code: {response1.status_code}"
+                )
+            diff1_file.write(response1.content)
+
+            second_patch_url = f"https://phabricator.services.mozilla.com/D{revision_id}?id={second_patch}&download=true"
+            response2 = requests.get(second_patch_url)
+            if response2.status_code != 200:
+                raise Exception(
+                    f"Failed to download second patch: {second_patch}, status code: {response2.status_code}"
+                )
+            diff2_file.write(response2.content)
+
+            diff1_file.close()
+            diff2_file.close()
+
+            result = subprocess.run(
+                ["interdiff", diff1_file.name, diff2_file.name],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+                text=True,
+            )
+
+        return result.stdout
+
+    except subprocess.CalledProcessError as e:
+        raise Exception(
+            f"Interdiff failed for revision {revision_id}. Error: {e.stderr.strip()}"
+        )
+    except Exception as e:
+        raise Exception(f"Error in fetch_interdiff for revision {revision_id}: {e}")
+    finally:
+        for temp_file in [diff1_file.name, diff2_file.name]:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
