@@ -201,7 +201,7 @@ def process_comments(limit, diff_length_limit):
             for transaction in transactions
             if transaction["type"] == "update" and transaction["id"] > patch_id
         ]
-        if len(updates_after_current) > 2:
+        if len(updates_after_current) > 3:
             continue
 
         # Skip if there are comments on subsequent patches within the same revision
@@ -307,7 +307,7 @@ def main():
         "--diff-length-limit",
         type=int,
         default=1000,
-        help="Limit the maximum allowed diff length. Default 10000 if not specified.",
+        help="Limit the maximum allowed diff length. Default 1000 if not specified.",
     )
 
     args = parser.parse_args()
