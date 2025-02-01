@@ -193,6 +193,12 @@ def process_comments(limit, diff_length_limit):
             continue
 
         revision_info = diff_id_to_revisions_map[patch_id]
+        # cutoff_timestamp = datetime(2023, 10, 31).timestamp()
+        # dateCreated = revision_info["fields"]["dateCreated"]
+
+        # if dateCreated <= cutoff_timestamp:
+        #     continue
+
         revision_id = revision_info["id"]
         transactions = revision_info["transactions"]
 
