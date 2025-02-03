@@ -359,3 +359,18 @@ def fetch_interdiff(revision_id, first_patch, second_patch):
         for temp_file in [diff1_file.name, diff2_file.name]:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
+
+
+def get_commit_hash_from_diff(api, diff_id):
+    """Fetches the Mercurial commit hash (base revision) for a given diff ID using Phabricator's Conduit API."""
+    try:
+        response = api.search_diffs(diff_id=diff_id)
+
+        if response and len(response) > 0:  # Directly check the list
+            diff_data = response[0]  # Get the first (and only) diff entry
+            return diff_data.get("baseRevision")  # Extract the base commit hash
+
+        return None
+    except Exception as e:
+        logger.error(f"Failed to get commit hash for diff {diff_id}: {e}")
+        return None

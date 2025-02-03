@@ -3,11 +3,12 @@ import logging
 import os
 import re
 
+import hglib
 import orjson
 from libmozdata.phabricator import PhabricatorAPI
 
-from bugbug import db, phabricator
-from bugbug.phabricator import fetch_interdiff
+from bugbug import db, phabricator, repository
+from bugbug.phabricator import fetch_interdiff, get_commit_hash_from_diff
 from bugbug.tools.code_review import PhabricatorReviewData
 from bugbug.utils import (
     get_secret,
@@ -258,14 +259,28 @@ def process_comments(limit, diff_length_limit):
             logger.error(f"Failed to fetch diff: {e}")
             continue
 
-        if len(patch_diff) > diff_length_limit:
+        if len(patch_diff) > diff_length_limit or len(patch_diff) == 0:
             continue
 
-        if len(patch_diff) == 0:
-            continue
+        commit_hash = get_commit_hash_from_diff(api, patch_id)
 
         for comment in comments:
             # relevant_diff = extract_relevant_diff(patch_diff, comment.filename)
+            file_path = (
+                comment.filename
+            )  # Assuming you can get the filename from the comment
+            raw_file_content = None
+
+            print(f"commit_hash: {commit_hash}")
+
+            if commit_hash:
+                try:
+                    raw_file_content = get_file_content(
+                        "hg_dir", commit_hash, file_path
+                    )
+                    print(f"raw_file_content: {raw_file_content}")
+                except FileNotFoundError as e:
+                    logger.warning(f"Could not retrieve file: {e}")
 
             # if relevant_diff:
             data = {
@@ -274,6 +289,8 @@ def process_comments(limit, diff_length_limit):
                 "revision_phid": revision_phid,
                 "initial_patch_id": patch_id,
                 "final_patch_id": final_patch_id,
+                "commit_hash": commit_hash,
+                "raw_file_content": raw_file_content,
                 "comment": comment.__dict__,
                 "fix_patch_diff": patch_diff,
                 # "fix_patch_diff": relevant_diff,
@@ -301,6 +318,31 @@ def has_no_comments_after_within_revision(patch_id, revision_id, patches_by_revi
     raise KeyError(f"Patch ID {patch_id} not found in revision {revision_id}")
 
 
+def get_file_content(repo_path, commit_hash, file_path):
+    """Fetches the raw file content at a specific commit in a local Mercurial repository.
+
+    Args:
+        repo_path (str): Path to the Mercurial repository.
+        commit_hash (str): The commit hash at which to retrieve the file.
+        file_path (str): Path of the file in the repository.
+
+    Returns:
+        str: The file content at the specified commit.
+    """
+    client = hglib.open(repo_path)
+
+    try:
+        file_content = client.cat([file_path.encode()], rev=commit_hash.encode())
+        return file_content.decode("utf-8")
+    except hglib.error.CommandError:
+        raise FileNotFoundError(f"File {file_path} not found at commit {commit_hash}")
+
+
+def download_databases() -> None:
+    logger.info("Cloning Mercurial database...")
+    repository.clone(repo_dir="hg_dir")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Process patch reviews.")
     parser.add_argument(
@@ -324,6 +366,7 @@ def main():
     os.makedirs("patches", exist_ok=True)
 
     db.download(phabricator.REVISIONS_DB)
+    download_databases()
 
     with open(phabricator.FIXED_COMMENTS_DB, "wb") as dataset_file_handle:
         for data in process_comments(
