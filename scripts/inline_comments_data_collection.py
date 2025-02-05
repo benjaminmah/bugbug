@@ -266,12 +266,11 @@ def process_comments(limit, diff_length_limit):
 
         for comment in comments:
             # relevant_diff = extract_relevant_diff(patch_diff, comment.filename)
-            file_path = (
-                comment.filename
-            )  # Assuming you can get the filename from the comment
+            file_path = comment.filename
             raw_file_content = None
 
             print(f"commit_hash: {commit_hash}")
+            print(f"file_path: {file_path}")
 
             if commit_hash:
                 try:
