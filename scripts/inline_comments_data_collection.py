@@ -7,8 +7,8 @@ import hglib
 import orjson
 from libmozdata.phabricator import PhabricatorAPI
 
-from bugbug import db, phabricator, repository
-from bugbug.phabricator import fetch_interdiff, get_commit_hash_from_diff
+from bugbug import db, phabricator, repository, selenium_test
+from bugbug.phabricator import fetch_interdiff
 from bugbug.tools.code_review import PhabricatorReviewData
 from bugbug.utils import (
     get_secret,
@@ -167,7 +167,7 @@ def extract_relevant_diff(patch_diff, filename):
 #             break
 
 
-def process_comments(limit, diff_length_limit):
+def process_comments(limit, diff_length_limit, phabricator_scraper):
     patch_count = 0
     diff_id_to_revisions_map, diff_phid_to_id = load_revisions_maps()
 
@@ -262,24 +262,13 @@ def process_comments(limit, diff_length_limit):
         if len(patch_diff) > diff_length_limit or len(patch_diff) == 0:
             continue
 
-        commit_hash = get_commit_hash_from_diff(api, patch_id)
-
         for comment in comments:
             # relevant_diff = extract_relevant_diff(patch_diff, comment.filename)
             file_path = comment.filename
             raw_file_content = None
-
-            print(f"commit_hash: {commit_hash}")
-            print(f"file_path: {file_path}")
-
-            if commit_hash:
-                try:
-                    raw_file_content = get_file_content(
-                        "hg_dir", commit_hash, file_path
-                    )
-                    print(f"raw_file_content: {raw_file_content}")
-                except FileNotFoundError as e:
-                    logger.warning(f"Could not retrieve file: {e}")
+            raw_file_content = phabricator_scraper.get_raw_file_content(
+                revision_id, patch_id, final_patch_id, file_path
+            )
 
             # if relevant_diff:
             data = {
@@ -288,7 +277,6 @@ def process_comments(limit, diff_length_limit):
                 "revision_phid": revision_phid,
                 "initial_patch_id": patch_id,
                 "final_patch_id": final_patch_id,
-                "commit_hash": commit_hash,
                 "raw_file_content": raw_file_content,
                 "comment": comment.__dict__,
                 "fix_patch_diff": patch_diff,
@@ -367,15 +355,22 @@ def main():
     db.download(phabricator.REVISIONS_DB)
     download_databases()
 
+    phabricator_scraper = selenium_test.PhabricatorScraper()
+
     with open(phabricator.FIXED_COMMENTS_DB, "wb") as dataset_file_handle:
         for data in process_comments(
             limit=limit,
             diff_length_limit=diff_length_limit,
+            phabricator_scraper=phabricator_scraper,
         ):
             dataset_file_handle.write(orjson.dumps(data) + b"\n")
 
     zstd_compress(phabricator.FIXED_COMMENTS_DB)
+    phabricator_scraper.close()
 
 
 if __name__ == "__main__":
+    import os
+
+    print("WDM_GITHUB_TOKEN =", os.environ.get("WDM_GITHUB_TOKEN"))
     main()
