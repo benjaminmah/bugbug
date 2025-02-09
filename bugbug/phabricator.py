@@ -33,7 +33,7 @@ db.register(
     4,
 )
 
-FIXED_COMMENTS_DB = "data/fixed_comments3.json"
+FIXED_COMMENTS_DB = "data/fixed_comments4.json"
 db.register(
     FIXED_COMMENTS_DB,
     "https://community-tc.services.mozilla.com/api/index/v1/task/project.bugbug.fixed_comments.latest/artifacts/public/fixed_comments.json.zst",
@@ -361,16 +361,38 @@ def fetch_interdiff(revision_id, first_patch, second_patch):
                 os.remove(temp_file)
 
 
+# def get_commit_hash_from_diff(api, diff_id):
+#     """Fetches the Mercurial commit hash (base revision) for a given diff ID using Phabricator's Conduit API."""
+#     try:
+#         response = api.search_diffs(diff_id=diff_id)
+
+#         if response and len(response) > 0:  # Directly check the list
+#             diff_data = response[0]  # Get the first (and only) diff entry
+#             return diff_data.get("baseRevision")  # Extract the base commit hash
+
+
+#         return None
+#     except Exception as e:
+#         logger.error(f"Failed to get commit hash for diff {diff_id}: {e}")
+#         return None
 def get_commit_hash_from_diff(api, diff_id):
-    """Fetches the Mercurial commit hash (base revision) for a given diff ID using Phabricator's Conduit API."""
+    """Fetches the base revision (commit hash) for a given diff ID using Phabricator's Conduit API."""
     try:
-        response = api.search_diffs(diff_id=diff_id)
+        # Call the correct API method with constraints
+        response = api.request(
+            "differential.diff.search", constraints={"ids": [diff_id]}
+        )
 
-        if response and len(response) > 0:  # Directly check the list
-            diff_data = response[0]  # Get the first (and only) diff entry
-            return diff_data.get("baseRevision")  # Extract the base commit hash
+        print(f"API response: {response}")
 
-        return None
+        # Extract data safely
+        if response and "data" in response and len(response["data"]) > 0:
+            diff_data = response["data"][0]  # Get first result
+            return diff_data.get("fields", {}).get(
+                "baseRevision"
+            )  # Extract baseRevision
+
+        return None  # No valid result
     except Exception as e:
-        logger.error(f"Failed to get commit hash for diff {diff_id}: {e}")
+        logging.error(f"Failed to get commit hash for diff {diff_id}: {e}")
         return None
