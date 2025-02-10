@@ -270,6 +270,13 @@ def process_comments(limit, diff_length_limit, phabricator_scraper):
                 revision_id, patch_id, final_patch_id, file_path
             )
 
+            if raw_file_content == "":
+                print("Could not find file")
+                print(
+                    f"Params: {revision_id}, {patch_id}, {final_patch_id}, {file_path}"
+                )
+                continue
+
             # if relevant_diff:
             data = {
                 "bug_id": bug_id,
@@ -370,7 +377,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import os
-
-    print("WDM_GITHUB_TOKEN =", os.environ.get("WDM_GITHUB_TOKEN"))
     main()
