@@ -262,6 +262,9 @@ def process_comments(limit, diff_length_limit, phabricator_scraper):
         if len(patch_diff) > diff_length_limit or len(patch_diff) == 0:
             continue
 
+        if revision_id in [97437, 112132, 113979, 123995, 136358]:
+            continue
+
         for comment in comments:
             # relevant_diff = extract_relevant_diff(patch_diff, comment.filename)
             file_path = comment.filename
