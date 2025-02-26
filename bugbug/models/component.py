@@ -174,8 +174,7 @@ class ComponentModel(BugModel):
                 product_components[bug_id] = (current_product, current_component)
             # For older bugs (2-4 years), include only if originally GTK and then moved out
             elif creation_time >= datetime.now(timezone.utc) - relativedelta(years=3):
-                history_data = bugzilla.get([bug_id])
-                history = history_data[bug_id]["history"]
+                history = bug_data["history"]
 
                 originally_gtk = False
 
