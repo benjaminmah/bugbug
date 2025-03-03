@@ -172,26 +172,60 @@ class ComponentModel(BugModel):
             # Include recent bugs from the last 2 years normally
             if creation_time >= datetime.now(timezone.utc) - relativedelta(years=2):
                 product_components[bug_id] = (current_product, current_component)
-            # For older bugs (2-4 years), include only if originally GTK and then moved out
-            elif creation_time >= datetime.now(timezone.utc) - relativedelta(years=3):
-                history = bug_data["history"]
+                # history = bug_data["history"]
+                # found = False
+                # for entry in history:
+                #     for change in entry["changes"]:
+                #         if change["field_name"] == "component":
+                #             if entry["who"] == "release-mgmt-account-bot@mozilla.tld":
+                #                 found = True
+                #                 break
+                #             else:
+                #                 product_components[bug_id] = (current_product, current_component)
+                #                 found = True
+                #                 break
+                #         if found:
+                #             break
 
-                originally_gtk = False
+                # if current_component == "Widget: Gtk":
+                #     found = False
+                #     for entry in history:
+                #         for change in entry["changes"]:
+                #             if change["field_name"] == "component":
+                #                 if change["removed"] == "Widget: Gtk" and change["added"] != "Widget: Gtk":
+                #                     print(f"HELLO >> {entry['who']}")
+                #                     if entry["who"] == "release-mgmt-account-bot@mozilla.tld":
+                #                         print("BRUH MOMENT")
+                #                     else:
+                #                         product_components[bug_id] = (current_product, current_component)
+                #                         found = True
+                #                         break
+                #         if found:
+                #             break
+                # else:
+                #     product_components[bug_id] = (current_product, current_component)
 
-                for entry in history:
-                    for change in entry["changes"]:
-                        if change["field_name"] == "component":
-                            if (
-                                change["removed"] == "Widget: Gtk"
-                                and change["added"] != "Widget: Gtk"
-                            ):
-                                originally_gtk = True
-                                break
-                    if originally_gtk:
-                        break
+            # # For older bugs (2-4 years), include only if originally GTK and then moved out
+            # elif creation_time >= datetime.now(timezone.utc) - relativedelta(years=3):
+            #     history = bug_data["history"]
 
-                if originally_gtk and current_component != "Widget: Gtk":
-                    product_components[bug_id] = (current_product, current_component)
+            #     originally_gtk = False
+
+            #     for entry in history:
+            #         for change in entry["changes"]:
+            #             if change["field_name"] == "component":
+            #                 print(f"CHANGERINO > {entry}")
+            #                 if (
+            #                     change["removed"] == "Widget: Gtk"
+            #                     and change["added"] != "Widget: Gtk"
+            #                 ):
+            #                     originally_gtk = True
+            #                     break
+            #         if originally_gtk:
+            #             break
+
+            #     if originally_gtk and current_component != "Widget: Gtk":
+            #         product_components[bug_id] = (current_product, current_component)
 
         ### END OF NEW CODE
 
